@@ -81,7 +81,8 @@ impl Parser {
             Token::List | Token::Containing | Token::Map |
             Token::Add | Token::Remove |
             Token::As |
-            Token::Capitalize | Token::Extends | Token::Input)
+            Token::Capitalize | Token::Extends | Token::Input |
+            Token::Interface | Token::Can | Token::Implements)
     }
 
     #[allow(dead_code)]
@@ -301,17 +302,33 @@ impl Parser {
     fn parse_define(&mut self) -> Stmt {
         self.advance();
         let _a = self.advance();
+        if self.peek() == &Token::Interface {
+            return self.parse_interface_def();
+        }
         let name = match self.advance() {
             Token::Identifier(n) => n.clone(),
             _ => panic!("expected class name"),
         };
         let mut parent = None;
-        if self.peek() == &Token::Extends {
-            self.advance();
-            parent = Some(match self.advance() {
-                Token::Identifier(n) => n.clone(),
-                _ => panic!("expected parent class name"),
-            });
+        let mut implements = Vec::new();
+        loop {
+            if self.peek() == &Token::Extends {
+                self.advance();
+                parent = Some(match self.advance() {
+                    Token::Identifier(n) => n.clone(),
+                    _ => panic!("expected parent class name"),
+                });
+            } else if self.peek() == &Token::Implements {
+                self.advance();
+                loop {
+                    match self.advance() {
+                        Token::Identifier(n) => implements.push(n.clone()),
+                        _ => panic!("expected interface name"),
+                    }
+                    if self.peek() != &Token::Comma { break; }
+                    self.advance();
+                }
+            } else { break; }
         }
         self.expect_peek(&Token::Colon);
 
@@ -360,10 +377,7 @@ impl Parser {
                 }
                 Token::To => {
                     self.advance();
-                    let name = match self.advance() {
-                        Token::Identifier(n) => n.clone(),
-                        _ => panic!("expected method name"),
-                    };
+                    let name = self.parse_name_token();
                     let mut params = Vec::new();
                     if self.expect_peek(&Token::With) {
                         params = self.parse_param_list();
@@ -376,10 +390,7 @@ impl Parser {
                 }
                 Token::Make => {
                     self.advance();
-                    let name = match self.advance() {
-                        Token::Identifier(n) => n.clone(),
-                        _ => panic!("expected member name"),
-                    };
+                    let name = self.parse_name_token();
                     self.expect_peek(&Token::Public);
                     publics.push(name);
                     while self.expect_peek(&Token::Dot) {}
@@ -388,7 +399,35 @@ impl Parser {
             }
         }
         self.expect_peek(&Token::End);
-        Stmt::ClassDef { name, parent, fields, constructor, destructor, methods, publics }
+        Stmt::ClassDef { name, parent, implements, fields, constructor, destructor, methods, publics }
+    }
+
+    fn parse_interface_def(&mut self) -> Stmt {
+        self.advance();
+        let name = match self.advance() {
+            Token::Identifier(n) => n.clone(),
+            _ => panic!("expected interface name"),
+        };
+        self.expect_peek(&Token::Colon);
+        let mut methods = Vec::new();
+        loop {
+            if self.peek() == &Token::End { break; }
+            match self.peek() {
+                Token::Can => {
+                    self.advance();
+                    let method_name = self.parse_name_token();
+                    let mut params = Vec::new();
+                    if self.expect_peek(&Token::With) {
+                        params = self.parse_param_list();
+                    }
+                    methods.push(InterfaceMethod { name: method_name, params });
+                    while self.expect_peek(&Token::Dot) {}
+                }
+                _ => panic!("unexpected token in interface body: {:?}", self.peek()),
+            }
+        }
+        self.expect_peek(&Token::End);
+        Stmt::InterfaceDef { name, methods }
     }
 
     #[allow(dead_code)]
@@ -1097,6 +1136,9 @@ impl Parser {
             Capitalize => "capitalize".into(),
             Extends => "extends".into(),
             Input => "input".into(),
+            Interface => "interface".into(),
+            Can => "can".into(),
+            Implements => "implements".into(),
             With => "with".into(),
             From => "from".into(),
             _ => return None,

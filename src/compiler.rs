@@ -7,6 +7,7 @@ pub struct Compiler {
     func_table: Vec<(String, Vec<String>, Vec<Instruction>, Vec<String>)>,
     class_table: Vec<(String, Vec<(String, Vec<String>, Vec<Instruction>, Vec<String>)>)>,
     class_fields: Vec<(String, Vec<(String, crate::value::Value)>)>,
+    interface_table: Vec<(String, Vec<crate::ast::InterfaceMethod>)>,
     loops: Vec<Vec<usize>>,
     source_dir: Option<String>,
 }
@@ -18,6 +19,7 @@ impl Compiler {
             func_table: Vec::new(),
             class_table: Vec::new(),
             class_fields: Vec::new(),
+            interface_table: Vec::new(),
             loops: Vec::new(),
             source_dir: None,
         }
@@ -29,6 +31,7 @@ impl Compiler {
             func_table: Vec::new(),
             class_table: Vec::new(),
             class_fields: Vec::new(),
+            interface_table: Vec::new(),
             loops: Vec::new(),
             source_dir: Some(dir),
         }
@@ -385,7 +388,7 @@ impl Compiler {
                     self.emit(Instruction::Pop);
                 }
             }
-            Stmt::ClassDef { name, parent, fields, constructor, destructor, methods, publics, .. } => {
+            Stmt::ClassDef { name, parent, implements, fields, constructor, destructor, methods, publics, .. } => {
                 let mut compiled_methods = Vec::new();
                 if let Some(ctor) = constructor {
                     let mut ccompiler = Compiler::new();
@@ -436,6 +439,19 @@ impl Compiler {
                     }
                 }
 
+                for iface_name in implements {
+                    if let Some(iface) = self.interface_table.iter().find(|(n, _)| n == iface_name) {
+                        for im in &iface.1 {
+                            if !compiled_methods.iter().any(|(mn, mp, _, _)| mn == &im.name && mp.len() == im.params.len()) {
+                                panic!("class {} does not implement interface {}: method {}({}) not found",
+                                    name, iface_name, im.name, im.params.join(", "));
+                            }
+                        }
+                    } else {
+                        panic!("interface {} not found", iface_name);
+                    }
+                }
+
                 self.class_table.push((name.clone(), compiled_methods.clone()));
                 self.class_fields.push((name.clone(), field_values.clone()));
 
@@ -470,6 +486,9 @@ impl Compiler {
                 for s in stmts {
                     self.compile_stmt(s);
                 }
+            }
+            Stmt::InterfaceDef { name, methods } => {
+                self.interface_table.push((name.clone(), methods.clone()));
             }
             Stmt::Refer { module, symbols: _ } => {
                 let mod_path = self.resolve_module_path(&module);

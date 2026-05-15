@@ -28,6 +28,7 @@ pub enum Token {
     Add, Remove,
     The, By, Than,
     Capitalize, Extends, Input,
+    Interface, Can, Implements,
     Number(f64),
     String(String),
     Identifier(String),
@@ -204,6 +205,9 @@ impl Lexer {
             "capitalize" => Capitalize,
             "extends" => Extends,
             "input" => Input,
+            "interface" => Interface,
+            "can" => Can,
+            "implements" => Implements,
             _ => return None,
         })
     }
