@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::io::{self, Write};
 
+use crate::bytecode::{ConstantPool, FuncDef, ClassDef};
 use crate::gc::Gc;
 use crate::instruction::Instruction;
 use crate::value::{ClassMethodDef, SharedInstanceData, Value};
@@ -18,17 +19,14 @@ struct TryInfo {
 }
 
 pub struct VM {
+    constants: ConstantPool,
     stack: Vec<Value>,
     vars: HashMap<String, Value>,
     globals: HashMap<String, Value>,
     code: Vec<Instruction>,
     ip: isize,
-    func_table: Vec<(String, Vec<String>, Vec<Instruction>, Vec<String>)>,
-    #[allow(dead_code)]
-    class_table: Vec<(
-        String,
-        Vec<(String, Vec<String>, Vec<Instruction>, Vec<String>)>,
-    )>,
+    func_defs: Vec<FuncDef>,
+    class_defs: Vec<ClassDef>,
     call_stack: Vec<Frame>,
     try_stack: Vec<TryInfo>,
     #[allow(dead_code)]
@@ -51,20 +49,19 @@ struct Frame {
 impl VM {
     pub fn new(
         code: Vec<Instruction>,
-        func_table: Vec<(String, Vec<String>, Vec<Instruction>, Vec<String>)>,
-        class_table: Vec<(
-            String,
-            Vec<(String, Vec<String>, Vec<Instruction>, Vec<String>)>,
-        )>,
+        constants: ConstantPool,
+        func_defs: Vec<FuncDef>,
+        class_defs: Vec<ClassDef>,
     ) -> Self {
         VM {
+            constants,
             stack: Vec::new(),
             vars: HashMap::new(),
             globals: HashMap::new(),
             code,
             ip: 0,
-            func_table,
-            class_table,
+            func_defs,
+            class_defs,
             call_stack: Vec::new(),
             try_stack: Vec::new(),
             error_flag: false,
@@ -176,21 +173,6 @@ impl VM {
         self.globals.insert(name.to_string(), val);
     }
 
-    #[allow(dead_code)]
-    fn binary_op(&mut self, op: fn(f64, f64) -> f64) {
-        let b = self.pop();
-        let a = self.pop();
-        match (&a, &b) {
-            (Value::Number(x), Value::Number(y)) => {
-                self.push(Value::Number(op(*x, *y)));
-            }
-            (Value::String(x), Value::String(y)) if op(0.0, 0.0) == 0.0 => {}
-            _ => {
-                self.push(Value::Null);
-            }
-        }
-    }
-
     fn compare(&mut self, cmp: fn(f64, f64) -> bool) {
         let b = self.pop();
         let a = self.pop();
@@ -209,12 +191,8 @@ impl VM {
 
     pub fn run(&mut self) -> Result<(), String> {
         loop {
-            if self.halted {
-                break;
-            }
-            if self.ip as usize >= self.code.len() {
-                break;
-            }
+            if self.halted { break; }
+            if self.ip as usize >= self.code.len() { break; }
 
             if let Err(e) = self.process_drops() {
                 return Err(e);
@@ -224,22 +202,30 @@ impl VM {
             self.ip += 1;
             self.exec_inst(inst)?;
 
-            if self.halted {
-                break;
-            }
+            if self.halted { break; }
         }
         let _ = self.process_drops();
         Ok(())
     }
 
+    fn const_val(&self, idx: u32) -> Value {
+        self.constants.get(idx).to_value()
+    }
+
+    fn str_val(&self, idx: u32) -> String {
+        self.constants.get(idx).as_string()
+    }
+
     fn exec_inst(&mut self, inst: Instruction) -> Result<(), String> {
         match inst {
-            Instruction::Const(v) => self.push(v),
-            Instruction::LoadVar(name) => {
+            Instruction::Const(idx) => self.push(self.const_val(idx)),
+            Instruction::LoadVar(idx) => {
+                let name = self.str_val(idx);
                 let val = self.var(&name);
                 self.push(val);
             }
-            Instruction::StoreVar(name) => {
+            Instruction::StoreVar(idx) => {
+                let name = self.str_val(idx);
                 let val = self.pop();
                 if self.call_stack.is_empty() {
                     self.set_global(&name, val);
@@ -249,7 +235,7 @@ impl VM {
             }
             Instruction::LoadLocal(idx) => {
                 if let Some(frame) = self.call_stack.last() {
-                    if let Some(val) = frame.vars.values().nth(idx) {
+                    if let Some(val) = frame.vars.values().nth(idx as usize) {
                         self.push(val.clone());
                     } else {
                         self.push(Value::Null);
@@ -259,7 +245,7 @@ impl VM {
             Instruction::StoreLocal(idx) => {
                 let val = self.pop();
                 if let Some(frame) = self.call_stack.last_mut() {
-                    let key = frame.vars.keys().nth(idx).cloned();
+                    let key = frame.vars.keys().nth(idx as usize).cloned();
                     if let Some(k) = key {
                         frame.vars.insert(k, val);
                     }
@@ -270,15 +256,9 @@ impl VM {
                 let a = self.pop();
                 match (&a, &b) {
                     (Value::Number(x), Value::Number(y)) => self.push(Value::Number(x + y)),
-                    (Value::String(x), Value::String(y)) => {
-                        self.push(Value::String(format!("{}{}", x, y)))
-                    }
-                    (Value::String(x), _) => {
-                        self.push(Value::String(format!("{}{}", x, b.to_string())))
-                    }
-                    (_, Value::String(y)) => {
-                        self.push(Value::String(format!("{}{}", a.to_string(), y)))
-                    }
+                    (Value::String(x), Value::String(y)) => self.push(Value::String(format!("{}{}", x, y))),
+                    (Value::String(x), _) => self.push(Value::String(format!("{}{}", x, b.to_string()))),
+                    (_, Value::String(y)) => self.push(Value::String(format!("{}{}", a.to_string(), y))),
                     _ => self.push(Value::Null),
                 }
             }
@@ -358,31 +338,27 @@ impl VM {
             Instruction::Ge => self.compare(|x, y| x >= y),
             Instruction::Le => self.compare(|x, y| x <= y),
             Instruction::Jump(offset) => {
-                self.ip = (self.ip as isize + offset - 1) as isize;
+                self.ip = self.ip + offset as isize - 1;
             }
             Instruction::JumpIfFalse(offset) => {
                 let val = self.pop();
                 if !val.is_truthy() {
-                    self.ip = (self.ip as isize + offset - 1) as isize;
+                    self.ip = self.ip + offset as isize - 1;
                 }
             }
             Instruction::JumpIfTrue(offset) => {
                 let val = self.pop();
                 if val.is_truthy() {
-                    self.ip = (self.ip as isize + offset - 1) as isize;
+                    self.ip = self.ip + offset as isize - 1;
                 }
             }
             Instruction::Call(argc) => {
+                let argc = argc as usize;
                 let stack_len = self.stack.len();
                 let callee = self.stack[stack_len - 1].clone();
 
                 match callee {
-                    Value::Func {
-                        name: _,
-                        code,
-                        params,
-                        captures,
-                    } => {
+                    Value::Func { name: _, code, params, captures } => {
                         let mut new_vars = HashMap::new();
                         for cap in &captures {
                             new_vars.insert(cap.clone(), self.var(cap));
@@ -394,9 +370,7 @@ impl VM {
                                 new_vars.insert(param.clone(), arg_val);
                             }
                         }
-                        for _ in 0..=argc {
-                            self.pop();
-                        }
+                        for _ in 0..=argc { self.pop(); }
 
                         let frame = Frame {
                             ip: self.ip,
@@ -417,9 +391,7 @@ impl VM {
                             let arg_idx = stack_len - argc - 1 + i;
                             args.push(self.stack[arg_idx].clone());
                         }
-                        for _ in 0..=argc {
-                            self.pop();
-                        }
+                        for _ in 0..=argc { self.pop(); }
                         match f(&args) {
                             Ok(result) => self.push(result),
                             Err(e) => return Err(e),
@@ -435,9 +407,7 @@ impl VM {
                                     let d = data.borrow();
                                     (d.class.clone(), d.methods.clone())
                                 }
-                                _ => {
-                                    return Err(format!("cannot call method on non-instance"));
-                                }
+                                _ => return Err(format!("cannot call method on non-instance")),
                             };
                             if let Some(m) = methods.iter().find(|m| m.name == name) {
                                 let mut new_vars = HashMap::new();
@@ -450,9 +420,7 @@ impl VM {
                                         new_vars.insert(param.clone(), arg_val);
                                     }
                                 }
-                                for _ in 0..=argc {
-                                    self.pop();
-                                }
+                                for _ in 0..=argc { self.pop(); }
 
                                 let frame = Frame {
                                     ip: self.ip,
@@ -473,18 +441,14 @@ impl VM {
                             return Err(format!("invalid method call"));
                         }
                     }
-                    _ => {
-                        return Err(format!("cannot call non-function: {:?}", callee));
-                    }
+                    _ => return Err(format!("cannot call non-function: {:?}", callee)),
                 }
             }
             Instruction::Return => {
                 let val = self.pop();
                 if let Some(frame) = self.call_stack.pop() {
                     let depth = frame.stack_depth;
-                    while self.stack.len() > depth {
-                        self.pop();
-                    }
+                    while self.stack.len() > depth { self.pop(); }
                     if self.pending_instance.is_some() {
                         let instance = if let Some(modified_self) = self.vars.get("self") {
                             modified_self.clone()
@@ -507,67 +471,60 @@ impl VM {
                     self.push(val);
                 }
             }
-            Instruction::MakeFunc(name, params, idx) => {
-                if let Some((_, _, code, captures)) = self.func_table.get(idx) {
+            Instruction::MakeFunc(idx) => {
+                if let Some(def) = self.func_defs.get(idx as usize) {
                     self.push(Value::Func {
-                        name,
-                        params,
-                        code: code.clone(),
-                        captures: captures.clone(),
+                        name: def.name.clone(),
+                        params: def.params.clone(),
+                        code: def.code.clone(),
+                        captures: def.captures.clone(),
                     });
                 }
             }
-            Instruction::MakeClosure(idx, captures) => {
-                let entry = self.func_table.get(idx).cloned();
-                if let Some((name, params, code, _)) = entry {
-                    let captured_vals: Vec<String> = captures.iter().map(|c| c.clone()).collect();
+            Instruction::MakeClosure(idx, caps) => {
+                if let Some(def) = self.func_defs.get(idx as usize) {
+                    let captured_strs: Vec<String> = caps.iter()
+                        .map(|&i| self.str_val(i))
+                        .collect();
                     self.push(Value::Func {
-                        name,
-                        params,
-                        code,
-                        captures: captured_vals,
+                        name: def.name.clone(),
+                        params: def.params.clone(),
+                        code: def.code.clone(),
+                        captures: captured_strs,
                     });
                 }
             }
-            Instruction::MakeClass(name, methods) => {
-                let mut class_methods = Vec::new();
-                for (mname, params, code, captures) in &methods {
-                    class_methods.push(ClassMethodDef {
-                        name: mname.clone(),
-                        params: params.clone(),
-                        code: code.clone(),
-                        captures: captures.clone(),
+            Instruction::MakeClass(idx) => {
+                if let Some(def) = self.class_defs.get(idx as usize) {
+                    let methods: Vec<ClassMethodDef> = def.methods.iter().map(|m| {
+                        ClassMethodDef {
+                            name: m.name.clone(),
+                            params: m.params.clone(),
+                            code: m.code.clone(),
+                            captures: m.captures.clone(),
+                        }
+                    }).collect();
+                    self.push(Value::Class {
+                        name: def.name.clone(),
+                        fields: def.fields.clone(),
+                        methods,
+                        publics: def.publics.clone(),
+                        constructor_params: def.constructor_params.clone(),
                     });
                 }
-                self.push(Value::Class {
-                    name,
-                    fields: vec![],
-                    methods: class_methods,
-                    publics: vec![],
-                    constructor_params: vec![],
-                });
             }
-            Instruction::Instantiate(class_name) => {
+            Instruction::Instantiate(idx) => {
+                let class_name = self.str_val(idx);
                 let mut class_val = self.var(&class_name);
                 if let Value::Null = class_val {
-                    class_val = self
-                        .globals
-                        .get(&class_name)
-                        .cloned()
-                        .unwrap_or(Value::Null);
+                    class_val = self.globals.get(&class_name).cloned().unwrap_or(Value::Null);
                 }
                 match class_val {
-                    Value::Class {
-                        name,
-                        fields,
-                        methods,
-                        ..
-                    } => {
+                    Value::Class { name, fields, methods, .. } => {
                         let mut instance_fields: HashMap<String, Value> = HashMap::new();
                         for (n, v) in &fields {
                             instance_fields.insert(n.clone(), v.clone());
                         }
-
                         let has_destroy = methods.iter().any(|m| m.name == "destroy");
                         let shared = Value::SharedInstance(Gc::new(
                             SharedInstanceData {
@@ -577,7 +534,6 @@ impl VM {
                                 has_destroy,
                             },
                         ));
-
                         let ctor = methods.iter().find(|m| m.name == "create");
                         if let Some(ctor) = ctor {
                             let argc = ctor.params.len();
@@ -592,10 +548,7 @@ impl VM {
                                     }
                                 }
                             }
-                            for _ in 0..argc {
-                                self.pop();
-                            }
-
+                            for _ in 0..argc { self.pop(); }
                             let frame = Frame {
                                 ip: self.ip,
                                 code: self.code.clone(),
@@ -616,17 +569,18 @@ impl VM {
                     _ => return Err(format!("{} is not a class", class_name)),
                 }
             }
-            Instruction::LoadMethod(name) => {
+            Instruction::LoadMethod(idx) => {
+                let name = self.str_val(idx);
                 self.push(Value::String(name));
             }
             Instruction::MakeList(count) => {
+                let count = count as usize;
                 let mut items = Vec::new();
-                for _ in 0..count {
-                    items.insert(0, self.pop());
-                }
+                for _ in 0..count { items.insert(0, self.pop()); }
                 self.push(Value::List(Gc::new(items)));
             }
             Instruction::MakeMap(count) => {
+                let count = count as usize;
                 let mut map = HashMap::new();
                 for _ in 0..count {
                     let val = self.pop();
@@ -646,11 +600,8 @@ impl VM {
                         Value::Number(n) => {
                             let items = items.borrow();
                             let i = n as usize;
-                            if i < items.len() {
-                                self.push(items[i].clone());
-                            } else {
-                                self.push(Value::Null);
-                            }
+                            if i < items.len() { self.push(items[i].clone()); }
+                            else { self.push(Value::Null); }
                         }
                         _ => self.push(Value::Null),
                     },
@@ -665,8 +616,7 @@ impl VM {
                 let val = self.pop();
                 match val {
                     Value::Map(map) => {
-                        let keys: Vec<Value> =
-                            map.borrow().keys().cloned().map(Value::String).collect();
+                        let keys: Vec<Value> = map.borrow().keys().cloned().map(Value::String).collect();
                         self.push(Value::List(Gc::new(keys)));
                     }
                     other => self.push(other),
@@ -685,10 +635,7 @@ impl VM {
                 let list = self.pop();
                 let element = self.pop();
                 match list {
-                    Value::List(items) => {
-                        items.borrow_mut().push(element);
-                        self.push(Value::List(items));
-                    }
+                    Value::List(items) => { items.borrow_mut().push(element); self.push(Value::List(items)); }
                     _ => return Err("cannot add to non-list".into()),
                 }
             }
@@ -708,7 +655,8 @@ impl VM {
                 let val = self.pop();
                 println!("{}", val.to_string());
             }
-            Instruction::Ask(var) => {
+            Instruction::Ask(idx) => {
+                let var = self.str_val(idx);
                 let prompt = self.pop();
                 print!("{}", prompt.to_string());
                 io::stdout().flush().unwrap();
@@ -716,16 +664,12 @@ impl VM {
                 io::stdin().read_line(&mut input).unwrap();
                 self.set_var(&var, Value::String(input.trim().to_string()));
             }
-            Instruction::ReadFile(var) => {
+            Instruction::ReadFile(idx) => {
+                let var = self.str_val(idx);
                 let filename = self.pop();
                 match fs::read_to_string(filename.to_string()) {
-                    Ok(content) => {
-                        self.set_var(&var, Value::String(content));
-                    }
-                    Err(e) => {
-                        self.set_var(&var, Value::Null);
-                        return Err(format!("cannot read file: {}", e));
-                    }
+                    Ok(content) => { self.set_var(&var, Value::String(content)); }
+                    Err(e) => { self.set_var(&var, Value::Null); return Err(format!("cannot read file: {}", e)); }
                 }
             }
             Instruction::WriteFile => {
@@ -741,13 +685,9 @@ impl VM {
                 if let Some(info) = self.try_stack.last() {
                     if info.try_start <= self.ip - 1 && self.ip - 1 < info.try_end {
                         let info = self.try_stack.pop().unwrap();
-                        while self.call_stack.len() > info.call_stack_depth {
-                            self.call_stack.pop();
-                        }
+                        while self.call_stack.len() > info.call_stack_depth { self.call_stack.pop(); }
                         self.vars = info.saved_vars;
-                        while self.stack.len() > info.stack_depth {
-                            self.pop();
-                        }
+                        while self.stack.len() > info.stack_depth { self.pop(); }
                         self.push(err_val);
                         self.ip = info.catch_ip;
                         return Ok(());
@@ -757,14 +697,13 @@ impl VM {
             }
             Instruction::TryCatch(catch_offset, finally_offset) => {
                 let try_start = self.ip - 1;
-                let try_end = try_start + catch_offset;
                 let info = TryInfo {
                     stack_depth: self.stack.len(),
                     call_stack_depth: self.call_stack.len(),
-                    catch_ip: self.ip + catch_offset - 1,
-                    finally_ip: self.ip + catch_offset + finally_offset - 1,
+                    catch_ip: self.ip + catch_offset as isize - 1,
+                    finally_ip: self.ip + catch_offset as isize + finally_offset as isize - 1,
                     try_start,
-                    try_end,
+                    try_end: try_start + catch_offset as isize,
                     saved_vars: self.vars.clone(),
                 };
                 self.try_stack.push(info);
@@ -779,9 +718,7 @@ impl VM {
                 match val {
                     Value::String(s) => {
                         let mut chars: Vec<char> = s.chars().collect();
-                        if let Some(c) = chars.first_mut() {
-                            c.make_ascii_uppercase();
-                        }
+                        if let Some(c) = chars.first_mut() { c.make_ascii_uppercase(); }
                         self.push(Value::String(chars.into_iter().collect()));
                     }
                     _ => self.push(Value::Null),
@@ -792,17 +729,15 @@ impl VM {
                 io::stdin().read_line(&mut input).unwrap();
                 self.push(Value::String(input.trim().to_string()));
             }
-            Instruction::Convert(target_type) => {
+            Instruction::Convert(idx) => {
+                let target_type = self.str_val(idx);
                 let val = self.pop();
                 match target_type.as_str() {
                     "number" => match val {
                         Value::Number(n) => self.push(Value::Number(n)),
                         Value::String(s) => {
-                            if let Ok(n) = s.parse::<f64>() {
-                                self.push(Value::Number(n));
-                            } else {
-                                self.push(Value::Null);
-                            }
+                            if let Ok(n) = s.parse::<f64>() { self.push(Value::Number(n)); }
+                            else { self.push(Value::Null); }
                         }
                         _ => self.push(Value::Null),
                     },
@@ -815,19 +750,10 @@ impl VM {
                 let val = self.peek();
                 self.push(val);
             }
-            Instruction::Pop => {
-                self.pop();
-            }
-            Instruction::Stop => {
-                self.halted = true;
-            }
-            Instruction::Exit => {
-                self.pop();
-                self.halted = true;
-            }
-            Instruction::Halt => {
-                self.halted = true;
-            }
+            Instruction::Pop => { self.pop(); }
+            Instruction::Stop => { self.halted = true; }
+            Instruction::Exit => { self.pop(); self.halted = true; }
+            Instruction::Halt => { self.halted = true; }
         }
         Ok(())
     }
@@ -835,13 +761,12 @@ impl VM {
     fn process_drops(&mut self) -> Result<(), String> {
         let queue = crate::value::drain_destroy_queue();
         for pd in queue {
-            let instance_val =
-                Value::SharedInstance(Gc::new(SharedInstanceData {
-                    class: pd.class,
-                    fields: pd.fields,
-                    methods: pd.methods.clone(),
-                    has_destroy: false,
-                }));
+            let instance_val = Value::SharedInstance(Gc::new(SharedInstanceData {
+                class: pd.class,
+                fields: pd.fields,
+                methods: pd.methods.clone(),
+                has_destroy: false,
+            }));
             if let Some(destroy) = pd.methods.iter().find(|m| m.name == "destroy") {
                 let mut new_vars = HashMap::new();
                 new_vars.insert("self".into(), instance_val);
@@ -858,15 +783,11 @@ impl VM {
                 self.ip = 0;
                 self.vars = new_vars;
                 loop {
-                    if self.ip as usize >= self.code.len() {
-                        break;
-                    }
+                    if self.ip as usize >= self.code.len() { break; }
                     let inst = self.code[self.ip as usize].clone();
                     self.ip += 1;
                     self.exec_inst(inst)?;
-                    if self.halted {
-                        break;
-                    }
+                    if self.halted { break; }
                 }
                 if let Some(frame) = self.call_stack.pop() {
                     self.code = frame.code;
@@ -877,5 +798,4 @@ impl VM {
         }
         Ok(())
     }
-
 }
