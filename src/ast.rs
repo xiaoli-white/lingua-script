@@ -31,6 +31,10 @@ pub enum Expr {
     MapLiteral(Vec<(String, Expr)>),
     TypeOf(Box<Expr>),
     Capitalize(Box<Expr>),
+    SuperCall {
+        method: String,
+        args: Vec<Expr>,
+    },
     Input,
 }
 
@@ -138,6 +142,7 @@ pub enum Stmt {
     },
     InterfaceDef {
         name: String,
+        extends: Vec<String>,
         methods: Vec<InterfaceMethod>,
     },
     Instantiate {

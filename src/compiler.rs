@@ -150,6 +150,14 @@ impl Compiler {
                 self.compile_expr(expr);
                 self.emit(Instruction::Capitalize);
             }
+            Expr::SuperCall { method, args } => {
+                self.emit(Instruction::LoadVar("self".to_string()));
+                for arg in args {
+                    self.compile_expr(arg);
+                }
+                self.emit(Instruction::LoadMethod(format!("__super_{}", method)));
+                self.emit(Instruction::Call(args.len() + 1));
+            }
             Expr::Input => {
                 self.emit(Instruction::Input);
             }
@@ -434,6 +442,51 @@ impl Compiler {
                         for pm_entry in &pm.1 {
                             if !compiled_methods.iter().any(|(n, _, _, _)| n == &pm_entry.0) {
                                 compiled_methods.push(pm_entry.clone());
+                            } else {
+                                let super_name = format!("__super_{}", pm_entry.0);
+                                if !compiled_methods.iter().any(|(n, _, _, _)| n == &super_name) {
+                                    compiled_methods.push((super_name, pm_entry.1.clone(), pm_entry.2.clone(), pm_entry.3.clone()));
+                                }
+                            }
+                        }
+                    }
+                    if constructor.is_some() {
+                        if let Some(pm) = self.class_table.iter().find(|(n, _)| n == parent_name) {
+                            let parent_ctor = pm.1.iter().find(|(n, _, _, _)| n == "create");
+                            if let Some((_, params, _, _)) = parent_ctor {
+                                if params.is_empty() {
+                                    if let Some(ctor_idx) = compiled_methods.iter().position(|(n, _, _, _)| n == "create") {
+                                        let mut new_code = vec![
+                                            Instruction::LoadVar("self".to_string()),
+                                            Instruction::LoadMethod("__super_create".to_string()),
+                                            Instruction::Call(1),
+                                            Instruction::Pop,
+                                        ];
+                                        new_code.extend(compiled_methods[ctor_idx].2.clone());
+                                        compiled_methods[ctor_idx].2 = new_code;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if destructor.is_some() {
+                        if let Some(pm) = self.class_table.iter().find(|(n, _)| n == parent_name) {
+                            if pm.1.iter().any(|(n, _, _, _)| n == "destroy") {
+                                if let Some(dtor_idx) = compiled_methods.iter().position(|(n, _, _, _)| n == "destroy") {
+                                    let code_len = compiled_methods[dtor_idx].2.len();
+                                    if code_len >= 2 {
+                                        let idx = code_len - 2;
+                                        let super_call = vec![
+                                            Instruction::LoadVar("self".to_string()),
+                                            Instruction::LoadMethod("__super_destroy".to_string()),
+                                            Instruction::Call(1),
+                                            Instruction::Pop,
+                                        ];
+                                        for (i, inst) in super_call.into_iter().enumerate() {
+                                            compiled_methods[dtor_idx].2.insert(idx + i, inst);
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -487,8 +540,20 @@ impl Compiler {
                     self.compile_stmt(s);
                 }
             }
-            Stmt::InterfaceDef { name, methods } => {
-                self.interface_table.push((name.clone(), methods.clone()));
+            Stmt::InterfaceDef { name, methods, extends } => {
+                let mut all_methods = methods.clone();
+                for parent_name in extends {
+                    if let Some((_, parent_methods)) = self.interface_table.iter().find(|(n, _)| n == parent_name) {
+                        for pm in parent_methods {
+                            if !all_methods.iter().any(|m| m.name == pm.name) {
+                                all_methods.push(pm.clone());
+                            }
+                        }
+                    } else {
+                        panic!("interface {} extends unknown interface {}", name, parent_name);
+                    }
+                }
+                self.interface_table.push((name.clone(), all_methods));
             }
             Stmt::Refer { module, symbols: _ } => {
                 let mod_path = self.resolve_module_path(&module);

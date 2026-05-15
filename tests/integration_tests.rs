@@ -536,3 +536,135 @@ say a.
     )
     .is_ok());
 }
+
+#[test]
+fn test_interface_extends_one() {
+    assert!(execute(
+        r#"
+define an interface Named:
+    can get_name.
+end.
+define an interface Person extends Named:
+    can introduce.
+end.
+define a Human implements Person:
+    it has name which is "".
+    on create with n:
+        name becomes n.
+    end.
+    to get_name:
+        return name.
+    end.
+    to introduce:
+        say "Hi, " + name.
+    end.
+end.
+let h be fresh Human with "Bob".
+introduce using h.
+"#
+    )
+    .is_ok());
+}
+
+#[test]
+fn test_interface_extends_multi() {
+    assert!(execute(
+        r#"
+define an interface Named:
+    can get_name.
+end.
+define an interface Aged:
+    can get_age.
+end.
+define an interface Person extends Named, Aged:
+    can introduce.
+end.
+define a Human implements Person:
+    it has name which is "".
+    it has age which is 0.
+    on create with n, a:
+        name becomes n.
+        age becomes a.
+    end.
+    to get_name:
+        return name.
+    end.
+    to get_age:
+        return age.
+    end.
+    to introduce:
+        say name + " is " + age + " years old".
+    end.
+end.
+let h be fresh Human with "Alice", 30.
+say get_name using h.
+say get_age using h.
+"#
+    )
+    .is_ok());
+}
+
+#[test]
+fn test_method_override() {
+    assert!(execute(
+        r#"
+define an Animal:
+    to speak:
+        say "..."
+    end.
+end.
+define a Dog extends Animal:
+    to speak:
+        say "Woof!".
+    end.
+end.
+let d be fresh Dog.
+speak using d.
+"#
+    )
+    .is_ok());
+}
+
+#[test]
+fn test_method_super() {
+    assert!(execute(
+        r#"
+define an Animal:
+    it has name which is "".
+    on create with n:
+        name becomes n.
+    end.
+    to greet:
+        say "Hello from " + name.
+    end.
+end.
+define a Dog extends Animal:
+    to greet:
+        super of greet.
+        say "Woof from " + name.
+    end.
+end.
+let d be fresh Dog with "Rex".
+greet using d.
+"#
+    )
+    .is_ok());
+}
+
+#[test]
+fn test_method_inherit_default() {
+    assert!(execute(
+        r#"
+define an Animal:
+    to speak:
+        say "..."
+    end.
+end.
+define a Dog extends Animal:
+end.
+let d be fresh Dog.
+speak using d.
+"#
+    )
+    .is_ok());
+}

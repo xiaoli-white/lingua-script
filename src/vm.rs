@@ -45,6 +45,7 @@ struct Frame {
     vars: HashMap<String, Value>,
     stack_depth: usize,
     try_stack_depth: usize,
+    pending_instance: Option<Value>,
 }
 
 impl VM {
@@ -403,6 +404,7 @@ impl VM {
                             vars: self.vars.clone(),
                             stack_depth: self.stack.len(),
                             try_stack_depth: self.try_stack.len(),
+                            pending_instance: self.pending_instance.take(),
                         };
                         self.call_stack.push(frame);
                         self.code = code;
@@ -458,6 +460,7 @@ impl VM {
                                     vars: self.vars.clone(),
                                     stack_depth: self.stack.len(),
                                     try_stack_depth: self.try_stack.len(),
+                                    pending_instance: self.pending_instance.take(),
                                 };
                                 self.call_stack.push(frame);
                                 self.code = m.code.clone();
@@ -496,6 +499,7 @@ impl VM {
                     while self.try_stack.len() > frame.try_stack_depth {
                         self.try_stack.pop();
                     }
+                    self.pending_instance = frame.pending_instance;
                     self.code = frame.code;
                     self.ip = frame.ip;
                     self.vars = frame.vars;
@@ -592,14 +596,15 @@ impl VM {
                                 self.pop();
                             }
 
-                            self.pending_instance = Some(shared);
                             let frame = Frame {
                                 ip: self.ip,
                                 code: self.code.clone(),
                                 vars: self.vars.clone(),
                                 stack_depth: self.stack.len(),
                                 try_stack_depth: self.try_stack.len(),
+                                pending_instance: self.pending_instance.take(),
                             };
+                            self.pending_instance = Some(shared);
                             self.call_stack.push(frame);
                             self.code = ctor.code.clone();
                             self.ip = 0;
@@ -846,6 +851,7 @@ impl VM {
                     vars: self.vars.clone(),
                     stack_depth: self.stack.len(),
                     try_stack_depth: self.try_stack.len(),
+                    pending_instance: self.pending_instance.take(),
                 };
                 self.call_stack.push(frame);
                 self.code = destroy.code.clone();

@@ -82,7 +82,8 @@ impl Parser {
             Token::Add | Token::Remove |
             Token::As |
             Token::Capitalize | Token::Extends | Token::Input |
-            Token::Interface | Token::Can | Token::Implements)
+            Token::Interface | Token::Can | Token::Implements |
+            Token::Super)
     }
 
     #[allow(dead_code)]
@@ -146,7 +147,7 @@ impl Parser {
             Token::Convert => self.parse_convert(),
             Token::Make => self.parse_make_public(),
             _ => {
-                if let Token::Identifier(name) = self.peek().clone() {
+                if let Some(name) = Parser::peek_as_name(self.peek()) {
                     if self.peek_ahead(1) == &Token::Is {
                         return self.parse_is_def(name);
                     }
@@ -175,10 +176,7 @@ impl Parser {
 
     fn parse_let(&mut self) -> Stmt {
         self.advance();
-        let name = match self.advance() {
-            Token::Identifier(n) | Token::String(n) => n.clone(),
-            _ => panic!("expected identifier after let"),
-        };
+        let name = self.expect_identifier();
         self.advance();
         let value = self.parse_expr();
         Stmt::VarDecl { name, value }
@@ -220,10 +218,7 @@ impl Parser {
     fn parse_foreach(&mut self) -> Stmt {
         self.advance();
         self.expect_peek(&Token::Each);
-        let var = match self.advance() {
-            Token::Identifier(n) => n.clone(),
-            _ => panic!("expected variable name"),
-        };
+        let var = self.expect_identifier();
         self.expect_peek(&Token::In);
         let collection = self.parse_expr();
         self.expect_peek(&Token::Colon);
@@ -271,10 +266,7 @@ impl Parser {
         self.expect_peek(&Token::And);
         self.expect_peek(&Token::Save);
         self.expect_peek(&Token::To);
-        let var = match self.advance() {
-            Token::Identifier(n) => n.clone(),
-            _ => panic!("expected variable name after ask"),
-        };
+        let var = self.expect_identifier();
         Stmt::Ask { prompt, var }
     }
 
@@ -284,10 +276,7 @@ impl Parser {
         self.expect_peek(&Token::And);
         self.expect_peek(&Token::Save);
         self.expect_peek(&Token::To);
-        let var = match self.advance() {
-            Token::Identifier(n) => n.clone(),
-            _ => panic!("expected variable name"),
-        };
+        let var = self.expect_identifier();
         Stmt::ReadFile { filename, var }
     }
 
@@ -305,10 +294,7 @@ impl Parser {
         if self.peek() == &Token::Interface {
             return self.parse_interface_def();
         }
-        let name = match self.advance() {
-            Token::Identifier(n) => n.clone(),
-            _ => panic!("expected class name"),
-        };
+        let name = self.expect_identifier();
         let mut parent = None;
         let mut implements = Vec::new();
         loop {
@@ -404,10 +390,19 @@ impl Parser {
 
     fn parse_interface_def(&mut self) -> Stmt {
         self.advance();
-        let name = match self.advance() {
-            Token::Identifier(n) => n.clone(),
-            _ => panic!("expected interface name"),
-        };
+        let name = self.expect_identifier();
+        let mut extends = Vec::new();
+        if self.peek() == &Token::Extends {
+            self.advance();
+            loop {
+                match self.advance() {
+                    Token::Identifier(n) => extends.push(n.clone()),
+                    _ => panic!("expected interface name"),
+                }
+                if self.peek() != &Token::Comma { break; }
+                self.advance();
+            }
+        }
         self.expect_peek(&Token::Colon);
         let mut methods = Vec::new();
         loop {
@@ -427,7 +422,7 @@ impl Parser {
             }
         }
         self.expect_peek(&Token::End);
-        Stmt::InterfaceDef { name, methods }
+        Stmt::InterfaceDef { name, extends, methods }
     }
 
     #[allow(dead_code)]
@@ -459,6 +454,17 @@ impl Parser {
             }
         }
         Stmt::Instantiate { class_name, args, var }
+    }
+
+    fn expect_identifier(&mut self) -> String {
+        let tok = self.advance().clone();
+        if let Token::Identifier(n) = &tok {
+            n.clone()
+        } else if let Some(name) = Parser::token_to_name(&tok) {
+            name
+        } else {
+            panic!("expected identifier, got {:?}", tok)
+        }
     }
 
     fn parse_name_token(&mut self) -> String {
@@ -633,10 +639,7 @@ impl Parser {
 
     fn parse_make_public(&mut self) -> Stmt {
         self.advance();
-        let _name = match self.advance() {
-            Token::Identifier(n) => n.clone(),
-            _ => panic!("expected name"),
-        };
+        let _name = self.expect_identifier();
         self.expect_peek(&Token::Public);
         Stmt::Expression(Expr::Null)
     }
@@ -964,6 +967,87 @@ impl Parser {
                 self.advance();
                 Expr::Input
             }
+            Token::Super => {
+                self.advance();
+                if self.peek() == &Token::Of {
+                    self.advance();
+                    let method = self.parse_name_token();
+                    let mut args = Vec::new();
+                    if self.expect_peek(&Token::With) {
+                        loop {
+                            args.push(self.parse_expr());
+                            if self.peek() != &Token::Comma { break; }
+                            self.advance();
+                        }
+                    }
+                    return Expr::SuperCall { method, args };
+                }
+                let mut expr = Expr::Identifier("super".to_string());
+                loop {
+                    match self.peek() {
+                        Token::LParen => {
+                            self.advance();
+                            let mut args = Vec::new();
+                            if self.peek() != &Token::RParen {
+                                loop {
+                                    args.push(self.parse_expr());
+                                    if self.peek() != &Token::Comma { break; }
+                                    self.advance();
+                                }
+                            }
+                            self.expect_peek(&Token::RParen);
+                            expr = Expr::Call { callee: Box::new(expr), args };
+                        }
+                        Token::With => {
+                            if let Expr::Identifier(_) = expr {
+                                let mut args = Vec::new();
+                                self.advance();
+                                loop {
+                                    args.push(self.parse_expr());
+                                    if self.peek() != &Token::Comma { break; }
+                                    self.advance();
+                                }
+                                expr = Expr::Call { callee: Box::new(expr), args };
+                            } else { break; }
+                        }
+                        Token::Using | Token::UsingCall => {
+                            self.advance();
+                            let object = match self.peek() {
+                                Token::Identifier(n) => {
+                                    let name = n.clone();
+                                    self.advance();
+                                    Expr::Identifier(name)
+                                }
+                                _ => self.parse_primary(),
+                            };
+                            let mut args = Vec::new();
+                            if self.peek() == &Token::With {
+                                self.advance();
+                                loop {
+                                    args.push(self.parse_expr());
+                                    if self.peek() != &Token::Comma { break; }
+                                    self.advance();
+                                }
+                            }
+                            if let Expr::Identifier(mname) = &expr {
+                                expr = Expr::MethodCall {
+                                    object: Box::new(object),
+                                    method: mname.clone(),
+                                    args,
+                                };
+                            }
+                        }
+                        Token::And => {
+                            if self.peek_ahead(1) == &Token::Save {
+                                break;
+                            }
+                            break;
+                        }
+                        _ => break,
+                    }
+                }
+                expr
+            }
             Token::Instantiate => {
                 self.advance();
                 let class_name = match self.advance() {
@@ -1085,12 +1169,20 @@ impl Parser {
             }
             _ => {
                 let tok = self.advance();
-                if let Some(name) = Parser::token_to_name(tok) {
+                if let Some(name) = Parser::peek_as_name(tok) {
                     Expr::Identifier(name)
                 } else {
                     Expr::Null
                 }
             }
+        }
+    }
+
+    fn peek_as_name(tok: &Token) -> Option<String> {
+        if let Token::Identifier(n) = tok {
+            Some(n.clone())
+        } else {
+            Parser::token_to_name(tok)
         }
     }
 
@@ -1139,8 +1231,52 @@ impl Parser {
             Interface => "interface".into(),
             Can => "can".into(),
             Implements => "implements".into(),
+            Super => "super".into(),
             With => "with".into(),
             From => "from".into(),
+            When => "when".into(),
+            Otherwise => "otherwise".into(),
+            End => "end".into(),
+            Repeat => "repeat".into(),
+            Times => "times".into(),
+            For => "for".into(),
+            Each => "each".into(),
+            While => "while".into(),
+            Here => "here".into(),
+            Exit => "exit".into(),
+            Save => "save".into(),
+            Define => "define".into(),
+            A => "a".into(),
+            It => "it".into(),
+            Which => "which".into(),
+            On => "on".into(),
+            Create => "create".into(),
+            Destroy => "destroy".into(),
+            Public => "public".into(),
+            Instantiate => "instantiate".into(),
+            Fresh => "fresh".into(),
+            Note => "note".into(),
+            That => "that".into(),
+            Refer => "refer".into(),
+            Chapter => "chapter".into(),
+            Beware => "beware".into(),
+            InCase => "incase".into(),
+            Regardless => "regardless".into(),
+            Attempt => "attempt".into(),
+            If => "if".into(),
+            Fails => "fails".into(),
+            Added => "added".into(),
+            Subtracted => "subtracted".into(),
+            Multiplied => "multiplied".into(),
+            Divided => "divided".into(),
+            Remainder => "remainder".into(),
+            Square => "square".into(),
+            Root => "root".into(),
+            Sum => "sum".into(),
+            Product => "product".into(),
+            The => "the".into(),
+            Using => "using".into(),
+            UsingCall => "using".into(),
             _ => return None,
         })
     }
