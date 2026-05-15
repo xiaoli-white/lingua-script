@@ -129,11 +129,16 @@ pub enum Stmt {
     ClassDef {
         name: String,
         parent: Option<String>,
+        implements: Vec<String>,
         fields: Vec<(String, Expr)>,
         constructor: Option<ClassMethod>,
         destructor: Option<ClassMethod>,
         methods: Vec<ClassMethod>,
         publics: Vec<String>,
+    },
+    InterfaceDef {
+        name: String,
+        methods: Vec<InterfaceMethod>,
     },
     Instantiate {
         class_name: String,
@@ -156,6 +161,12 @@ pub struct ClassMethod {
     pub name: String,
     pub params: Vec<String>,
     pub body: Vec<Stmt>,
+}
+
+#[derive(Debug, Clone)]
+pub struct InterfaceMethod {
+    pub name: String,
+    pub params: Vec<String>,
 }
 
 pub struct Program {
