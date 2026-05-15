@@ -80,7 +80,8 @@ impl Parser {
             Token::Empty | Token::Null |
             Token::List | Token::Containing | Token::Map |
             Token::Add | Token::Remove |
-            Token::As)
+            Token::As |
+            Token::Capitalize | Token::Extends | Token::Input)
     }
 
     #[allow(dead_code)]
@@ -93,7 +94,8 @@ impl Parser {
             Token::Sum | Token::Product | Token::Remainder |
             Token::Type | Token::Convert |
             Token::Null | Token::Empty |
-            Token::Instantiate | Token::Fresh)
+            Token::Instantiate | Token::Fresh |
+            Token::Capitalize | Token::Input)
     }
 
     pub fn parse_program(&mut self) -> Program {
@@ -303,6 +305,14 @@ impl Parser {
             Token::Identifier(n) => n.clone(),
             _ => panic!("expected class name"),
         };
+        let mut parent = None;
+        if self.peek() == &Token::Extends {
+            self.advance();
+            parent = Some(match self.advance() {
+                Token::Identifier(n) => n.clone(),
+                _ => panic!("expected parent class name"),
+            });
+        }
         self.expect_peek(&Token::Colon);
 
         let mut fields = Vec::new();
@@ -378,7 +388,7 @@ impl Parser {
             }
         }
         self.expect_peek(&Token::End);
-        Stmt::ClassDef { name, fields, constructor, destructor, methods, publics }
+        Stmt::ClassDef { name, parent, fields, constructor, destructor, methods, publics }
     }
 
     #[allow(dead_code)]
@@ -887,6 +897,11 @@ impl Parser {
                 let expr = self.parse_unary();
                 Expr::TypeOf(Box::new(expr))
             }
+            Token::Capitalize => {
+                self.advance();
+                let expr = self.parse_unary();
+                Expr::Capitalize(Box::new(expr))
+            }
             _ => self.parse_primary(),
         }
     }
@@ -905,6 +920,10 @@ impl Parser {
                     Token::Map => return self.parse_map_literal(),
                     _ => Expr::Identifier("a".to_string()),
                 }
+            }
+            Token::Input => {
+                self.advance();
+                Expr::Input
             }
             Token::Instantiate => {
                 self.advance();
@@ -1075,6 +1094,9 @@ impl Parser {
             Of => "of".into(),
             By => "by".into(),
             To => "to".into(),
+            Capitalize => "capitalize".into(),
+            Extends => "extends".into(),
+            Input => "input".into(),
             With => "with".into(),
             From => "from".into(),
             _ => return None,

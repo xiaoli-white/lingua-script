@@ -769,6 +769,24 @@ impl VM {
                 let val = self.pop();
                 self.push(Value::String(val.type_name().to_string()));
             }
+            Instruction::Capitalize => {
+                let val = self.pop();
+                match val {
+                    Value::String(s) => {
+                        let mut chars: Vec<char> = s.chars().collect();
+                        if let Some(c) = chars.first_mut() {
+                            c.make_ascii_uppercase();
+                        }
+                        self.push(Value::String(chars.into_iter().collect()));
+                    }
+                    _ => self.push(Value::Null),
+                }
+            }
+            Instruction::Input => {
+                let mut input = String::new();
+                io::stdin().read_line(&mut input).unwrap();
+                self.push(Value::String(input.trim().to_string()));
+            }
             Instruction::Convert(target_type) => {
                 let val = self.pop();
                 match target_type.as_str() {

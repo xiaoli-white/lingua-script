@@ -27,6 +27,7 @@ pub enum Token {
     List, Containing, Map,
     Add, Remove,
     The, By, Than,
+    Capitalize, Extends, Input,
     Number(f64),
     String(String),
     Identifier(String),
@@ -200,6 +201,9 @@ impl Lexer {
             "list" => List, "containing" => Containing, "map" => Map,
             "add" => Add, "remove" => Remove, "the" => The,
             "by" => By, "than" => Than,
+            "capitalize" => Capitalize,
+            "extends" => Extends,
+            "input" => Input,
             _ => return None,
         })
     }

@@ -6,6 +6,7 @@ pub struct Compiler {
     code: Vec<Instruction>,
     func_table: Vec<(String, Vec<String>, Vec<Instruction>, Vec<String>)>,
     class_table: Vec<(String, Vec<(String, Vec<String>, Vec<Instruction>, Vec<String>)>)>,
+    class_fields: Vec<(String, Vec<(String, crate::value::Value)>)>,
     loops: Vec<Vec<usize>>,
     source_dir: Option<String>,
 }
@@ -16,6 +17,7 @@ impl Compiler {
             code: Vec::new(),
             func_table: Vec::new(),
             class_table: Vec::new(),
+            class_fields: Vec::new(),
             loops: Vec::new(),
             source_dir: None,
         }
@@ -26,6 +28,7 @@ impl Compiler {
             code: Vec::new(),
             func_table: Vec::new(),
             class_table: Vec::new(),
+            class_fields: Vec::new(),
             loops: Vec::new(),
             source_dir: Some(dir),
         }
@@ -139,6 +142,13 @@ impl Compiler {
             Expr::TypeOf(expr) => {
                 self.compile_expr(expr);
                 self.emit(Instruction::TypeOf);
+            }
+            Expr::Capitalize(expr) => {
+                self.compile_expr(expr);
+                self.emit(Instruction::Capitalize);
+            }
+            Expr::Input => {
+                self.emit(Instruction::Input);
             }
             Expr::Index { object, index } => {
                 self.compile_expr(object);
@@ -375,7 +385,7 @@ impl Compiler {
                     self.emit(Instruction::Pop);
                 }
             }
-            Stmt::ClassDef { name, fields, constructor, destructor, methods, publics, .. } => {
+            Stmt::ClassDef { name, parent, fields, constructor, destructor, methods, publics, .. } => {
                 let mut compiled_methods = Vec::new();
                 if let Some(ctor) = constructor {
                     let mut ccompiler = Compiler::new();
@@ -405,11 +415,29 @@ impl Compiler {
                     compiled_methods.push((m.name.clone(), m.params.clone(), mcompiler.code, vec![]));
                 }
 
-                self.class_table.push((name.clone(), compiled_methods.clone()));
-
-                let field_values: Vec<(String, Value)> = fields.iter()
+                let mut field_values: Vec<(String, Value)> = fields.iter()
                     .map(|(n, _)| (n.clone(), Value::Null))
                     .collect();
+
+                if let Some(ref parent_name) = parent {
+                    if let Some(pf) = self.class_fields.iter().find(|(n, _)| n == parent_name) {
+                        for (pf_name, pf_val) in &pf.1 {
+                            if !field_values.iter().any(|(n, _)| n == pf_name) {
+                                field_values.push((pf_name.clone(), pf_val.clone()));
+                            }
+                        }
+                    }
+                    if let Some(pm) = self.class_table.iter().find(|(n, _)| n == parent_name) {
+                        for pm_entry in &pm.1 {
+                            if !compiled_methods.iter().any(|(n, _, _, _)| n == &pm_entry.0) {
+                                compiled_methods.push(pm_entry.clone());
+                            }
+                        }
+                    }
+                }
+
+                self.class_table.push((name.clone(), compiled_methods.clone()));
+                self.class_fields.push((name.clone(), field_values.clone()));
 
                 self.emit(Instruction::Const(Value::Class {
                     name: name.clone(),

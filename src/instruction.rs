@@ -37,6 +37,8 @@ pub enum Instruction {
     EndTry,
     TypeOf,
     Convert(String),
+    Capitalize,
+    Input,
     Dup,
     Pop,
     Stop,
