@@ -29,6 +29,7 @@ pub enum Token {
     The, By, Than,
     Capitalize, Extends, Input,
     Interface, Can, Implements,
+    Super,
     Number(f64),
     String(String),
     Identifier(String),
@@ -208,6 +209,7 @@ impl Lexer {
             "interface" => Interface,
             "can" => Can,
             "implements" => Implements,
+            "super" => Super,
             _ => return None,
         })
     }
