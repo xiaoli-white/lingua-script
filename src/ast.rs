@@ -30,6 +30,8 @@ pub enum Expr {
     ListLiteral(Vec<Expr>),
     MapLiteral(Vec<(String, Expr)>),
     TypeOf(Box<Expr>),
+    Capitalize(Box<Expr>),
+    Input,
 }
 
 #[derive(Debug, Clone)]
@@ -126,6 +128,7 @@ pub enum Stmt {
     },
     ClassDef {
         name: String,
+        parent: Option<String>,
         fields: Vec<(String, Expr)>,
         constructor: Option<ClassMethod>,
         destructor: Option<ClassMethod>,
