@@ -5,6 +5,7 @@ pub mod ast;
 pub mod parser;
 pub mod instruction;
 pub mod value;
+pub mod bytecode;
 pub mod compiler;
 pub mod vm;
 
@@ -14,12 +15,13 @@ use compiler::Compiler;
 
 pub fn execute(source: &str) -> Result<(), String> {
     let _ = value::drain_destroy_queue();
-    let (code, func_table, class_table, _) = compile(source)?;
-    let mut vm = vm::VM::new(code, func_table, class_table);
+    let module = compile(source)?;
+    let (func_defs, class_defs) = module.resolve();
+    let mut vm = vm::VM::new(module.main_code, module.constants, func_defs, class_defs);
     vm.run()
 }
 
-pub fn compile(source: &str) -> Result<(Vec<instruction::Instruction>, Vec<(String, Vec<String>, Vec<instruction::Instruction>, Vec<String>)>, Vec<(String, Vec<(String, Vec<String>, Vec<instruction::Instruction>, Vec<String>)>)>, std::collections::HashMap<String, value::Value>), String> {
+pub fn compile(source: &str) -> Result<bytecode::BytecodeModule, String> {
     let mut lexer = Lexer::new(source);
     let mut tokens = Vec::new();
     loop {
@@ -32,6 +34,5 @@ pub fn compile(source: &str) -> Result<(Vec<instruction::Instruction>, Vec<(Stri
     let program = parser.parse_program();
 
     let compiler = Compiler::new();
-    let (code, func_table, class_table) = compiler.compile(&program);
-    Ok((code, func_table, class_table, std::collections::HashMap::new()))
+    Ok(compiler.compile(&program))
 }
