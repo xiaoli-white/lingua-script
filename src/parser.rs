@@ -572,18 +572,30 @@ impl Parser {
         self.advance();
         self.expect_peek(&Token::To);
         let mut symbols = Vec::new();
-        if let Token::Identifier(sym) = self.peek().clone() {
-            if self.peek_ahead(1) == &Token::From {
-                symbols.push(sym);
-                self.advance();
+        if matches!(self.peek(), Token::Identifier(_)) {
+            if self.peek_ahead(1) == &Token::Comma {
+                loop {
+                    symbols.push(self.expect_identifier());
+                    if self.peek() == &Token::Comma { self.advance(); }
+                    else { break; }
+                }
+                self.expect_peek(&Token::From);
+            } else if self.peek_ahead(1) == &Token::From {
+                symbols.push(self.expect_identifier());
                 self.advance();
             }
         }
-        let module = match self.advance() {
-            Token::Identifier(m) | Token::String(m) => m.clone(),
-            _ => panic!("expected module name"),
-        };
-        Stmt::Refer { module, symbols }
+        let mut path = vec![self.parse_name_token()];
+        while self.peek() == &Token::Of {
+            self.advance();
+            path.push(self.parse_name_token());
+        }
+        let mut alias = None;
+        if self.peek() == &Token::As {
+            self.advance();
+            alias = Some(self.expect_identifier());
+        }
+        Stmt::Refer { path, symbols, alias }
     }
 
     fn parse_chapter(&mut self) -> Stmt {
@@ -673,6 +685,26 @@ impl Parser {
             if !self.expect_peek(&Token::Comma) { break; }
         }
         Expr::MapLiteral(pairs)
+    }
+
+    fn parse_using_object(&mut self) -> Expr {
+        match self.peek() {
+            Token::Identifier(n) => {
+                let name = n.clone();
+                self.advance();
+                if self.peek() == &Token::Of {
+                    let mut parts = vec![name];
+                    while self.peek() == &Token::Of {
+                        self.advance();
+                        parts.push(self.parse_name_token());
+                    }
+                    Expr::ModulePath(parts)
+                } else {
+                    Expr::Identifier(name)
+                }
+            }
+            _ => self.parse_primary(),
+        }
     }
 
     fn parse_param_list(&mut self) -> Vec<String> {
@@ -1012,14 +1044,7 @@ impl Parser {
                         }
                         Token::Using | Token::UsingCall => {
                             self.advance();
-                            let object = match self.peek() {
-                                Token::Identifier(n) => {
-                                    let name = n.clone();
-                                    self.advance();
-                                    Expr::Identifier(name)
-                                }
-                                _ => self.parse_primary(),
-                            };
+                            let object = self.parse_using_object();
                             let mut args = Vec::new();
                             if self.peek() == &Token::With {
                                 self.advance();
@@ -1112,14 +1137,7 @@ impl Parser {
                         }
                         Token::Using | Token::UsingCall => {
                             self.advance();
-                            let object = match self.peek() {
-                                Token::Identifier(n) => {
-                                    let name = n.clone();
-                                    self.advance();
-                                    Expr::Identifier(name)
-                                }
-                                _ => self.parse_primary(),
-                            };
+                            let object = self.parse_using_object();
                             let mut args = Vec::new();
                             if self.peek() == &Token::With {
                                 self.advance();

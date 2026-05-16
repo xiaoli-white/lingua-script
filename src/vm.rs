@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::fs;
 use std::io::{self, Write};
+use std::sync::Mutex;
 
 use crate::bytecode::{ConstantPool, FuncDef, ClassDef};
 use crate::gc::Gc;
@@ -187,6 +188,100 @@ impl VM {
                 self.push(Value::Bool(false));
             }
         }
+    }
+
+    fn make_std_module(name: &str) -> Value {
+        use std::sync::OnceLock;
+        static RNG: OnceLock<Mutex<rand::rngs::StdRng>> = OnceLock::new();
+
+        let mut map = HashMap::new();
+
+        match name {
+            "math" => {
+                map.insert("pi".into(), Value::Number(std::f64::consts::PI));
+                map.insert("e".into(), Value::Number(std::f64::consts::E));
+                map.insert("sin".into(), Value::NativeFunc(|args| {
+                    if let Some(Value::Number(x)) = args.first() {
+                        Ok(Value::Number(x.sin()))
+                    } else { Ok(Value::Null) }
+                }));
+                map.insert("cos".into(), Value::NativeFunc(|args| {
+                    if let Some(Value::Number(x)) = args.first() {
+                        Ok(Value::Number(x.cos()))
+                    } else { Ok(Value::Null) }
+                }));
+                map.insert("sqrt".into(), Value::NativeFunc(|args| {
+                    if let Some(Value::Number(x)) = args.first() {
+                        Ok(Value::Number(x.sqrt()))
+                    } else { Ok(Value::Null) }
+                }));
+                map.insert("abs".into(), Value::NativeFunc(|args| {
+                    if let Some(Value::Number(x)) = args.first() {
+                        Ok(Value::Number(x.abs()))
+                    } else { Ok(Value::Null) }
+                }));
+                map.insert("floor".into(), Value::NativeFunc(|args| {
+                    if let Some(Value::Number(x)) = args.first() {
+                        Ok(Value::Number(x.floor()))
+                    } else { Ok(Value::Null) }
+                }));
+                map.insert("ceil".into(), Value::NativeFunc(|args| {
+                    if let Some(Value::Number(x)) = args.first() {
+                        Ok(Value::Number(x.ceil()))
+                    } else { Ok(Value::Null) }
+                }));
+                map.insert("pow".into(), Value::NativeFunc(|args| {
+                    if args.len() >= 2 {
+                        match (&args[0], &args[1]) {
+                            (Value::Number(x), Value::Number(y)) => Ok(Value::Number(x.powf(*y))),
+                            _ => Ok(Value::Null),
+                        }
+                    } else { Ok(Value::Null) }
+                }));
+            }
+            "random" => {
+                map.insert("random".into(), Value::NativeFunc(|_| {
+                    use rand::Rng;
+                    let rng = RNG.get_or_init(|| Mutex::new(rand::SeedableRng::from_entropy()));
+                    Ok(Value::Number(rng.lock().unwrap().gen::<f64>()))
+                }));
+                map.insert("randint".into(), Value::NativeFunc(|args| {
+                    use rand::Rng;
+                    if args.len() >= 2 {
+                        match (&args[0], &args[1]) {
+                            (Value::Number(low), Value::Number(high)) => {
+                                let rng = RNG.get_or_init(|| Mutex::new(rand::SeedableRng::from_entropy()));
+                                let val = rng.lock().unwrap().gen_range(*low as i64..=*high as i64);
+                                Ok(Value::Number(val as f64))
+                            }
+                            _ => Ok(Value::Null),
+                        }
+                    } else { Ok(Value::Null) }
+                }));
+                map.insert("uniform".into(), Value::NativeFunc(|args| {
+                    use rand::Rng;
+                    if args.len() >= 2 {
+                        match (&args[0], &args[1]) {
+                            (Value::Number(low), Value::Number(high)) => {
+                                let rng = RNG.get_or_init(|| Mutex::new(rand::SeedableRng::from_entropy()));
+                                Ok(Value::Number(rng.lock().unwrap().gen_range(*low..=*high)))
+                            }
+                            _ => Ok(Value::Null),
+                        }
+                    } else { Ok(Value::Null) }
+                }));
+                map.insert("seed".into(), Value::NativeFunc(|args| {
+                    if let Some(Value::Number(n)) = args.first() {
+                        let rng = RNG.get_or_init(|| Mutex::new(rand::SeedableRng::from_entropy()));
+                        *rng.lock().unwrap() = rand::SeedableRng::seed_from_u64(*n as u64);
+                    }
+                    Ok(Value::Null)
+                }));
+            }
+            _ => {}
+        }
+
+        Value::Map(Gc::new(map))
     }
 
     pub fn run(&mut self) -> Result<(), String> {
@@ -402,40 +497,94 @@ impl VM {
                         let obj_idx = stack_len - argc - 1;
                         if obj_idx < stack_len {
                             let obj_val = self.stack[obj_idx].clone();
-                            let (class_name, methods) = match &obj_val {
+                            match &obj_val {
                                 Value::SharedInstance(data) => {
                                     let d = data.borrow();
-                                    (d.class.clone(), d.methods.clone())
-                                }
-                                _ => return Err(format!("cannot call method on non-instance")),
-                            };
-                            if let Some(m) = methods.iter().find(|m| m.name == name) {
-                                let mut new_vars = HashMap::new();
-                                new_vars.insert("self".into(), obj_val.clone());
-                                let num_real_args = argc - 1;
-                                for (i, param) in m.params.iter().enumerate() {
-                                    if i < num_real_args {
-                                        let arg_idx = obj_idx + 1 + i;
-                                        let arg_val = self.stack[arg_idx].clone();
-                                        new_vars.insert(param.clone(), arg_val);
+                                    let class_name = d.class.clone();
+                                    let methods = d.methods.clone();
+                                    if let Some(m) = methods.iter().find(|m| m.name == name) {
+                                        let mut new_vars = HashMap::new();
+                                        new_vars.insert("self".into(), obj_val.clone());
+                                        let num_real_args = argc - 1;
+                                        for (i, param) in m.params.iter().enumerate() {
+                                            if i < num_real_args {
+                                                let arg_idx = obj_idx + 1 + i;
+                                                let arg_val = self.stack[arg_idx].clone();
+                                                new_vars.insert(param.clone(), arg_val);
+                                            }
+                                        }
+                                        for _ in 0..=argc { self.pop(); }
+
+                                        let frame = Frame {
+                                            ip: self.ip,
+                                            code: self.code.clone(),
+                                            vars: self.vars.clone(),
+                                            stack_depth: self.stack.len(),
+                                            try_stack_depth: self.try_stack.len(),
+                                            pending_instance: self.pending_instance.take(),
+                                        };
+                                        self.call_stack.push(frame);
+                                        self.code = m.code.clone();
+                                        self.ip = 0;
+                                        self.vars = new_vars;
+                                    } else {
+                                        return Err(format!("method {} not found on {}", name, class_name));
                                     }
                                 }
-                                for _ in 0..=argc { self.pop(); }
+                                Value::Map(map) => {
+                                    let map_ref = map.borrow();
+                                    if let Some(val) = map_ref.get(&name) {
+                                        match val {
+                                            Value::NativeFunc(f) => {
+                                                let mut args = Vec::new();
+                                                for i in 0..argc - 1 {
+                                                    let arg_idx = obj_idx + 1 + i;
+                                                    args.push(self.stack[arg_idx].clone());
+                                                }
+                                                for _ in 0..=argc { self.pop(); }
+                                                match f(&args) {
+                                                    Ok(result) => self.push(result),
+                                                    Err(e) => return Err(e),
+                                                }
+                                            }
+                                            Value::Func { name: _, code, params, captures } => {
+                                                let mut new_vars = HashMap::new();
+                                                for cap in captures {
+                                                    new_vars.insert(cap.clone(), self.var(cap));
+                                                }
+                                                let num_real_args = argc - 1;
+                                                for (i, param) in params.iter().enumerate() {
+                                                    if i < num_real_args {
+                                                        let arg_idx = obj_idx + 1 + i;
+                                                        let arg_val = self.stack[arg_idx].clone();
+                                                        new_vars.insert(param.clone(), arg_val);
+                                                    }
+                                                }
+                                                for _ in 0..=argc { self.pop(); }
 
-                                let frame = Frame {
-                                    ip: self.ip,
-                                    code: self.code.clone(),
-                                    vars: self.vars.clone(),
-                                    stack_depth: self.stack.len(),
-                                    try_stack_depth: self.try_stack.len(),
-                                    pending_instance: self.pending_instance.take(),
-                                };
-                                self.call_stack.push(frame);
-                                self.code = m.code.clone();
-                                self.ip = 0;
-                                self.vars = new_vars;
-                            } else {
-                                return Err(format!("method {} not found on {}", name, class_name));
+                                                let frame = Frame {
+                                                    ip: self.ip,
+                                                    code: self.code.clone(),
+                                                    vars: self.vars.clone(),
+                                                    stack_depth: self.stack.len(),
+                                                    try_stack_depth: self.try_stack.len(),
+                                                    pending_instance: self.pending_instance.take(),
+                                                };
+                                                self.call_stack.push(frame);
+                                                self.code = code.clone();
+                                                self.ip = 0;
+                                                self.vars = new_vars;
+                                            }
+                                            other => {
+                                                for _ in 0..=argc { self.pop(); }
+                                                self.push(other.clone());
+                                            }
+                                        }
+                                    } else {
+                                        return Err(format!("method {} not found in module", name));
+                                    }
+                                }
+                                _ => return Err(format!("cannot call method on non-instance")),
                             }
                         } else {
                             return Err(format!("invalid method call"));
@@ -754,6 +903,39 @@ impl VM {
             Instruction::Stop => { self.halted = true; }
             Instruction::Exit => { self.pop(); self.halted = true; }
             Instruction::Halt => { self.halted = true; }
+            Instruction::MakeStdModule(idx) => {
+                let name = self.str_val(idx);
+                let module = Self::make_std_module(&name);
+                self.push(module);
+            }
+            Instruction::ReturnFrameAsMap => {
+                let map = Value::Map(Gc::new(self.vars.clone()));
+                if let Some(frame) = self.call_stack.pop() {
+                    while self.stack.len() > frame.stack_depth { self.pop(); }
+                    self.push(map);
+                    while self.try_stack.len() > frame.try_stack_depth { self.try_stack.pop(); }
+                    self.code = frame.code;
+                    self.ip = frame.ip;
+                    self.vars = frame.vars;
+                } else {
+                    self.push(map);
+                }
+            }
+            Instruction::FilterMap(keys) => {
+                let map_val = self.pop();
+                if let Value::Map(map) = map_val {
+                    let key_strs: Vec<String> = keys.iter().map(|&i| self.str_val(i)).collect();
+                    let mut new_map = HashMap::new();
+                    for k in &key_strs {
+                        if let Some(v) = map.borrow().get(k) {
+                            new_map.insert(k.clone(), v.clone());
+                        }
+                    }
+                    self.push(Value::Map(Gc::new(new_map)));
+                } else {
+                    self.push(map_val);
+                }
+            }
         }
         Ok(())
     }
