@@ -1,9 +1,5 @@
 use std::fs;
 use clap::Parser as ClapParser;
-use lingua_script::lexer::{Lexer, Token};
-use lingua_script::parser::Parser;
-use lingua_script::compiler::Compiler;
-use lingua_script::vm::VM;
 
 #[derive(ClapParser)]
 #[command(name = "lingua-script", version, about = "LinguaScript interpreter - A narrative programming language")]
