@@ -174,19 +174,79 @@ impl VM {
         self.globals.insert(name.to_string(), val);
     }
 
-    fn compare(&mut self, cmp: fn(f64, f64) -> bool) {
-        let b = self.pop();
-        let a = self.pop();
-        match (&a, &b) {
-            (Value::Number(x), Value::Number(y)) => {
-                self.push(Value::Bool(cmp(*x, *y)));
+    fn dispatch_operator(&mut self, method: &str, self_val: Value, args: Vec<Value>) -> Result<bool, String> {
+        match self_val {
+            Value::SharedInstance(data) => {
+                let d = data.borrow();
+                if let Some(method_def) = d.methods.iter().find(|m| m.name == method) {
+                    let mut new_vars = HashMap::new();
+                    new_vars.insert("self".into(), Value::SharedInstance(data.clone()));
+                    for (i, param) in method_def.params.iter().enumerate() {
+                        if i < args.len() {
+                            new_vars.insert(param.clone(), args[i].clone());
+                        }
+                    }
+                    let frame = Frame {
+                        ip: self.ip,
+                        code: self.code.clone(),
+                        vars: self.vars.clone(),
+                        stack_depth: self.stack.len(),
+                        try_stack_depth: self.try_stack.len(),
+                        pending_instance: self.pending_instance.take(),
+                    };
+                    self.call_stack.push(frame);
+                    self.code = method_def.code.clone();
+                    self.ip = 0;
+                    self.vars = new_vars;
+                    Ok(true)
+                } else {
+                    Ok(false)
+                }
             }
-            (Value::String(x), Value::String(y)) => {
-                self.push(Value::Bool(cmp(x.len() as f64, y.len() as f64)));
+            Value::Map(map) => {
+                let map_ref = map.borrow();
+                if let Some(val) = map_ref.get(method) {
+                    match val {
+                        Value::NativeFunc(f) => {
+                            match f(&args) {
+                                Ok(result) => { self.push(result); Ok(true) }
+                                Err(e) => Err(e),
+                            }
+                        }
+                        Value::Func { name: _, code, params, captures } => {
+                            let mut new_vars = HashMap::new();
+                            for cap in captures {
+                                new_vars.insert(cap.clone(), self.var(cap));
+                            }
+                            for (i, param) in params.iter().enumerate() {
+                                if i < args.len() {
+                                    new_vars.insert(param.clone(), args[i].clone());
+                                }
+                            }
+                            let frame = Frame {
+                                ip: self.ip,
+                                code: self.code.clone(),
+                                vars: self.vars.clone(),
+                                stack_depth: self.stack.len(),
+                                try_stack_depth: self.try_stack.len(),
+                                pending_instance: self.pending_instance.take(),
+                            };
+                            self.call_stack.push(frame);
+                            self.code = code.clone();
+                            self.ip = 0;
+                            self.vars = new_vars;
+                            Ok(true)
+                        }
+                        other => {
+                            self.push(other.clone());
+                            Ok(true)
+                        }
+                    }
+                } else {
+                    Ok(false)
+                }
             }
-            _ => {
-                self.push(Value::Bool(false));
-            }
+            _ => Ok(false),
         }
     }
 
@@ -349,59 +409,80 @@ impl VM {
             Instruction::Add => {
                 let b = self.pop();
                 let a = self.pop();
-                match (&a, &b) {
-                    (Value::Number(x), Value::Number(y)) => self.push(Value::Number(x + y)),
-                    (Value::String(x), Value::String(y)) => self.push(Value::String(format!("{}{}", x, y))),
-                    (Value::String(x), _) => self.push(Value::String(format!("{}{}", x, b.to_string()))),
-                    (_, Value::String(y)) => self.push(Value::String(format!("{}{}", a.to_string(), y))),
-                    _ => self.push(Value::Null),
+                let handled = match (&a, &b) {
+                    (Value::Number(x), Value::Number(y)) => { self.push(Value::Number(x + y)); true }
+                    (Value::String(x), Value::String(y)) => { self.push(Value::String(format!("{}{}", x, y))); true }
+                    (Value::String(x), _) => { self.push(Value::String(format!("{}{}", x, b.to_string()))); true }
+                    (_, Value::String(y)) => { self.push(Value::String(format!("{}{}", a.to_string(), y))); true }
+                    _ => false,
+                };
+                if !handled && !self.dispatch_operator("added_to", a, vec![b])? {
+                    self.push(Value::Null);
                 }
             }
             Instruction::Sub => {
                 let b = self.pop();
                 let a = self.pop();
-                match (&a, &b) {
-                    (Value::Number(x), Value::Number(y)) => self.push(Value::Number(x - y)),
-                    _ => self.push(Value::Null),
+                let handled = match (&a, &b) {
+                    (Value::Number(x), Value::Number(y)) => { self.push(Value::Number(x - y)); true }
+                    _ => false,
+                };
+                if !handled && !self.dispatch_operator("subtracted_by", a, vec![b])? {
+                    self.push(Value::Null);
                 }
             }
             Instruction::Mul => {
                 let b = self.pop();
                 let a = self.pop();
-                match (&a, &b) {
-                    (Value::Number(x), Value::Number(y)) => self.push(Value::Number(x * y)),
-                    _ => self.push(Value::Null),
+                let handled = match (&a, &b) {
+                    (Value::Number(x), Value::Number(y)) => { self.push(Value::Number(x * y)); true }
+                    _ => false,
+                };
+                if !handled && !self.dispatch_operator("multiplied_by", a, vec![b])? {
+                    self.push(Value::Null);
                 }
             }
             Instruction::Div => {
                 let b = self.pop();
                 let a = self.pop();
-                match (&a, &b) {
-                    (Value::Number(x), Value::Number(y)) => self.push(Value::Number(x / y)),
-                    _ => self.push(Value::Null),
+                let handled = match (&a, &b) {
+                    (Value::Number(x), Value::Number(y)) => { self.push(Value::Number(x / y)); true }
+                    _ => false,
+                };
+                if !handled && !self.dispatch_operator("divided_by", a, vec![b])? {
+                    self.push(Value::Null);
                 }
             }
             Instruction::Mod => {
                 let b = self.pop();
                 let a = self.pop();
-                match (&a, &b) {
-                    (Value::Number(x), Value::Number(y)) => self.push(Value::Number(x % y)),
-                    _ => self.push(Value::Null),
+                let handled = match (&a, &b) {
+                    (Value::Number(x), Value::Number(y)) => { self.push(Value::Number(x % y)); true }
+                    _ => false,
+                };
+                if !handled && !self.dispatch_operator("remainder_of", a, vec![b])? {
+                    self.push(Value::Null);
                 }
             }
             Instruction::Pow => {
                 let b = self.pop();
                 let a = self.pop();
-                match (&a, &b) {
-                    (Value::Number(x), Value::Number(y)) => self.push(Value::Number(x.powf(*y))),
-                    _ => self.push(Value::Null),
+                let handled = match (&a, &b) {
+                    (Value::Number(x), Value::Number(y)) => { self.push(Value::Number(x.powf(*y))); true }
+                    _ => false,
+                };
+                if !handled && !self.dispatch_operator("power", a, vec![b])? {
+                    self.push(Value::Null);
                 }
             }
             Instruction::Neg => {
                 let a = self.pop();
-                match a {
-                    Value::Number(n) => self.push(Value::Number(-n)),
-                    _ => self.push(Value::Null),
+                let handled = match &a {
+                    Value::Number(n) => { self.push(Value::Number(-n)); true }
+                    _ => false,
+                };
+                if !handled && !self.dispatch_operator("negated", a, vec![])? {
+                    self.push(Value::Null);
                 }
             }
             Instruction::And => {
@@ -416,22 +497,85 @@ impl VM {
             }
             Instruction::Not => {
                 let a = self.pop();
-                self.push(Value::Bool(!a.is_truthy()));
+                let is_bool = matches!(&a, Value::Bool(_));
+                if is_bool {
+                    self.push(Value::Bool(!a.is_truthy()));
+                } else if !self.dispatch_operator("inverted", a, vec![])? {
+                    self.push(Value::Bool(false));
+                }
             }
             Instruction::Eq => {
                 let b = self.pop();
                 let a = self.pop();
-                self.push(Value::Bool(a.to_string() == b.to_string()));
+                let handled = match (&a, &b) {
+                    (Value::Number(_), Value::Number(_)) => { self.push(Value::Bool(a.to_string() == b.to_string())); true }
+                    (Value::String(_), Value::String(_)) => { self.push(Value::Bool(a.to_string() == b.to_string())); true }
+                    _ => false,
+                };
+                if !handled && !self.dispatch_operator("equals", a, vec![b])? {
+                    self.push(Value::Bool(false));
+                }
             }
             Instruction::Ne => {
                 let b = self.pop();
                 let a = self.pop();
-                self.push(Value::Bool(a.to_string() != b.to_string()));
+                let handled = match (&a, &b) {
+                    (Value::Number(_), Value::Number(_)) => { self.push(Value::Bool(a.to_string() != b.to_string())); true }
+                    (Value::String(_), Value::String(_)) => { self.push(Value::Bool(a.to_string() != b.to_string())); true }
+                    _ => false,
+                };
+                if !handled && !self.dispatch_operator("not_equals", a, vec![b])? {
+                    self.push(Value::Bool(true));
+                }
             }
-            Instruction::Gt => self.compare(|x, y| x > y),
-            Instruction::Lt => self.compare(|x, y| x < y),
-            Instruction::Ge => self.compare(|x, y| x >= y),
-            Instruction::Le => self.compare(|x, y| x <= y),
+            Instruction::Gt => {
+                let b = self.pop();
+                let a = self.pop();
+                let handled = match (&a, &b) {
+                    (Value::Number(x), Value::Number(y)) => { self.push(Value::Bool(x > y)); true }
+                    (Value::String(x), Value::String(y)) => { self.push(Value::Bool(x.len() as f64 > y.len() as f64)); true }
+                    _ => false,
+                };
+                if !handled && !self.dispatch_operator("greater_than", a, vec![b])? {
+                    self.push(Value::Bool(false));
+                }
+            }
+            Instruction::Lt => {
+                let b = self.pop();
+                let a = self.pop();
+                let handled = match (&a, &b) {
+                    (Value::Number(x), Value::Number(y)) => { self.push(Value::Bool(x < y)); true }
+                    (Value::String(x), Value::String(y)) => { self.push(Value::Bool((x.len() as f64) < (y.len() as f64))); true }
+                    _ => false,
+                };
+                if !handled && !self.dispatch_operator("less_than", a, vec![b])? {
+                    self.push(Value::Bool(false));
+                }
+            }
+            Instruction::Ge => {
+                let b = self.pop();
+                let a = self.pop();
+                let handled = match (&a, &b) {
+                    (Value::Number(x), Value::Number(y)) => { self.push(Value::Bool(x >= y)); true }
+                    (Value::String(x), Value::String(y)) => { self.push(Value::Bool(x.len() as f64 >= y.len() as f64)); true }
+                    _ => false,
+                };
+                if !handled && !self.dispatch_operator("greater_than_or_equal_to", a, vec![b])? {
+                    self.push(Value::Bool(false));
+                }
+            }
+            Instruction::Le => {
+                let b = self.pop();
+                let a = self.pop();
+                let handled = match (&a, &b) {
+                    (Value::Number(x), Value::Number(y)) => { self.push(Value::Bool(x <= y)); true }
+                    (Value::String(x), Value::String(y)) => { self.push(Value::Bool(x.len() as f64 <= y.len() as f64)); true }
+                    _ => false,
+                };
+                if !handled && !self.dispatch_operator("less_than_or_equal_to", a, vec![b])? {
+                    self.push(Value::Bool(false));
+                }
+            }
             Instruction::Jump(offset) => {
                 self.ip = self.ip + offset as isize - 1;
             }
