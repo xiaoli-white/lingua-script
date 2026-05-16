@@ -41,6 +41,10 @@ score is one hundred.
 say score.
 let name be "Alice".
 say "Hello " + name.
+
+// Comments
+note that this is a comment.
+// Also supports inline comments.
 ```
 
 ### Numbers
@@ -302,55 +306,88 @@ end.
 
 ### Modules
 
+Define a module using `chapter`:
+
+```linguascript
+chapter my_module.
+
+to greet with name:
+    say "Hello, " + name + "!".
+end.
+
+let config be "module_value".
+```
+
 Flat import all exports from a module:
 
 ```linguascript
-refer to math.
-say sin(0).
-say pi.
+refer to my_module.
+say config.
+run greet with "Alice" and save to _.
 ```
 
 Aliased import with a namespace:
 
 ```linguascript
-refer to math as m.
-say sin using m with 0.
+refer to my_module as m.
+say config using m.
+run greet using m with "Alice" and save to _.
 ```
 
 Selective import with namespace:
 
 ```linguascript
-refer to sin, cos from math as trig.
-say sin using trig with 0.
+refer to greet from my_module as utils.
+run greet using utils with "Alice" and save to _.
 ```
 
 Module path resolution uses the `of` chain:
 
 ```linguascript
-refer to random of math.
-```
-
-Aliasing with `as`:
-
-```linguascript
-refer to math as ma.
-refer to sin, cos of math as trig.
-```
-
-Using module functions by namespace:
-
-```linguascript
-refer to math as m.
-say sin using m with 0.
-say cos using m with 0.
-say pi using m.
+refer to utils of my_module.
 ```
 
 Standard library modules: `math` (sin, cos, sqrt, abs, floor, ceil, pow, pi, e) and `random` (random, randint, uniform, seed).
 
 Modules are compiled to `.lsbc` bytecode on first import and loaded directly on subsequent runs for faster startup.
 
+### Input/Output and Files
+
+#### Standard Output
+
+```linguascript
+say "Hello World".
+```
+
+#### User Input
+
+```linguascript
+ask "Enter your name: " and save to name.
+say "Hello " + name.
+```
+
+#### File Operations
+
+```linguascript
+read "data.txt" and save to content.
+say content.
+
+write "Hello File!" to "output.txt".
+```
+
+#### Multi-line Strings
+
+```linguascript
+let story be """
+Once upon a time...
+The end.
+""".
+say story.
+```
+
 ### Entry Point
+
+Use `start here:` to define the main entry point. Code outside `start here` block does not execute.
 
 ```linguascript
 say "this does not run".
