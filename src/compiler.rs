@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::ast::*;
 use crate::bytecode::{BytecodeModule, ClassEntry, ConstantPool, FuncEntry, PoolEntry};
 use crate::instruction::Instruction;
@@ -12,6 +14,8 @@ pub struct Compiler {
     interface_table: Vec<(String, Vec<InterfaceMethod>)>,
     loops: Vec<Vec<usize>>,
     source_dir: Option<String>,
+    alias_table: HashMap<String, Vec<String>>,
+    module_registry: HashMap<Vec<String>, u32>,
 }
 
 impl Compiler {
@@ -25,6 +29,8 @@ impl Compiler {
             interface_table: Vec::new(),
             loops: Vec::new(),
             source_dir: None,
+            alias_table: HashMap::new(),
+            module_registry: HashMap::new(),
         }
     }
 
@@ -38,6 +44,8 @@ impl Compiler {
             interface_table: Vec::new(),
             loops: Vec::new(),
             source_dir: Some(dir),
+            alias_table: HashMap::new(),
+            module_registry: HashMap::new(),
         }
     }
 
@@ -52,10 +60,21 @@ impl Compiler {
 
     fn current_pos(&self) -> usize { self.code.len() }
 
-    fn resolve_module_path(&self, module: &str) -> String {
+    fn resolve_module_path(&self, parts: &[String]) -> Vec<String> {
+        if parts.is_empty() { return vec![]; }
+        if let Some(base) = self.alias_table.get(&parts[0]) {
+            let mut result = base.clone();
+            result.extend_from_slice(&parts[1..]);
+            result
+        } else {
+            parts.to_vec()
+        }
+    }
+
+    fn find_module_file(&self, module_name: &str) -> String {
         let candidates = vec![
-            module.to_string(),
-            format!("{}.ls", module),
+            module_name.to_string(),
+            format!("{}.ls", module_name),
         ];
         let prefixed: Vec<String> = if let Some(ref dir) = self.source_dir {
             candidates.iter()
@@ -68,7 +87,33 @@ impl Compiler {
         for path in &prefixed {
             if std::path::Path::new(path).exists() { return path.clone(); }
         }
-        format!("{}.ls", module)
+        format!("{}.ls", module_name)
+    }
+
+    fn read_module_source(&self, mod_path: &str) -> (String, crate::parser::Parser) {
+        let source = match std::fs::read_to_string(mod_path) {
+            Ok(s) => s,
+            Err(_) => { panic!("cannot read module: {}", mod_path); }
+        };
+        let tokens = {
+            let mut lexer = crate::lexer::Lexer::new(&source);
+            let mut tokens = Vec::new();
+            loop {
+                let tok = lexer.next_token();
+                if tok == crate::lexer::Token::EOF { break; }
+                if matches!(tok, crate::lexer::Token::Illegal(_)) { break; }
+                tokens.push(tok);
+            }
+            tokens
+        };
+        let parser = crate::parser::Parser::new(tokens);
+        (source, parser)
+    }
+
+    fn get_module_dir(mod_path: &str) -> String {
+        std::path::Path::new(mod_path).parent()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_default()
     }
 
     fn absorb_func_compiler(&mut self, sub: Compiler, name: &str, params: &[String], captures: &[String]) -> FuncEntry {
@@ -220,7 +265,13 @@ impl Compiler {
             Expr::Index { object, index } => {
                 self.compile_expr(object);
                 self.compile_expr(index);
-                self.emit(Instruction::Call(1));
+                self.emit(Instruction::IndexGet);
+            }
+            Expr::ModulePath(parts) => {
+                let resolved = self.resolve_module_path(parts);
+                let storage_key = module_var_name(&resolved);
+                let idx = self.s(&storage_key);
+                self.emit(Instruction::LoadVar(idx));
             }
         }
     }
@@ -623,67 +674,166 @@ impl Compiler {
                 }
                 self.interface_table.push((name.clone(), all_methods));
             }
-            Stmt::Refer { module, symbols: _ } => {
-                let mod_path = self.resolve_module_path(module);
-                let bc_path = if mod_path.ends_with(".ls") {
-                    mod_path[..mod_path.len() - 3].to_string() + ".lsbc"
-                } else {
-                    format!("{}.lsbc", mod_path)
-                };
+            Stmt::Refer { path, symbols, alias } => {
+                let resolved = self.resolve_module_path(path);
+                let module_name = resolved.join("/");
 
-                let loaded = if std::path::Path::new(&bc_path).exists() {
-                    match std::fs::read(&bc_path) {
-                        Ok(bytes) => {
-                            let module = BytecodeModule::decode(&bytes);
-                            self.merge_module(module);
-                            true
-                        }
-                        Err(_) => false,
+                if resolved.len() == 1 && Self::is_std_module(&resolved[0]) {
+                    self.compile_std_import(&resolved[0], symbols, alias);
+                    if let Some(a) = alias {
+                        self.alias_table.insert(a.clone(), resolved.clone());
                     }
-                } else { false };
+                } else {
+                    let mod_path = self.find_module_file(&module_name);
 
-                if !loaded {
-                    let source = match std::fs::read_to_string(&mod_path) {
-                        Ok(s) => s,
-                        Err(_) => { panic!("cannot read module: {}", mod_path); }
-                    };
-                    let tokens = {
-                        let mut lexer = crate::lexer::Lexer::new(&source);
-                        let mut tokens = Vec::new();
-                        loop {
-                            let tok = lexer.next_token();
-                            if tok == crate::lexer::Token::EOF { break; }
-                            if matches!(tok, crate::lexer::Token::Illegal(_)) { break; }
-                            tokens.push(tok);
-                        }
-                        tokens
-                    };
-                    let program = {
-                        let mut parser = crate::parser::Parser::new(tokens);
-                        parser.parse_program()
-                    };
+                    let is_flat = alias.is_none() && path.len() == 1
+                        && !self.alias_table.contains_key(&path[0]);
 
-                    let mod_dir = std::path::Path::new(&mod_path).parent()
-                        .map(|p| p.to_string_lossy().to_string())
-                        .unwrap_or_default();
-                    let mut mc = if mod_dir.is_empty() {
-                        Compiler::new()
+                    if is_flat {
+                        self.compile_flat_import(&mod_path, &resolved);
                     } else {
-                        Compiler::with_source_dir(mod_dir)
-                    };
-                    for s in &program.stmts { mc.compile_stmt(s); }
-                    mc.emit(Instruction::Halt);
-                    let module = BytecodeModule {
-                        constants: mc.constants,
-                        func_entries: mc.func_entries,
-                        class_entries: mc.class_entries,
-                        main_code: mc.code,
-                    };
-                    let _ = std::fs::write(&bc_path, module.encode());
-                    self.merge_module(module);
+                        self.compile_module_import(&mod_path, &resolved, symbols, alias);
+                    }
+
+                    if let Some(a) = alias {
+                        self.alias_table.insert(a.clone(), resolved.clone());
+                    }
                 }
             }
         }
+    }
+
+    fn compile_std_import(&mut self, name: &str, symbols: &[String], alias: &Option<String>) {
+        let name_idx = self.s(name);
+
+        if let Some(a) = alias {
+            self.emit(Instruction::MakeStdModule(name_idx));
+            let alias_idx = self.s(a);
+            if symbols.is_empty() {
+                self.emit(Instruction::StoreVar(alias_idx));
+            } else {
+                let key_idxs: Vec<u32> = symbols.iter().map(|s| self.s(s)).collect();
+                self.emit(Instruction::FilterMap(key_idxs));
+                self.emit(Instruction::StoreVar(alias_idx));
+            }
+        } else {
+            let exports: &[&str] = match name {
+                "math" => &["pi", "e", "sin", "cos", "sqrt", "abs", "floor", "ceil", "pow"],
+                "random" => &["random", "randint", "uniform", "seed"],
+                _ => &[],
+            };
+            let selected: Vec<&str> = if symbols.is_empty() {
+                exports.to_vec()
+            } else {
+                symbols.iter().map(|s| s.as_str()).collect()
+            };
+            self.emit(Instruction::MakeStdModule(name_idx));
+            let tmp_idx = self.s("__std_mod");
+            self.emit(Instruction::StoreVar(tmp_idx));
+            let mod_ref_idx = self.s("__std_mod");
+            for &entry in &selected {
+                let key_idx = self.s(entry);
+                self.emit(Instruction::Const(key_idx));
+                self.emit(Instruction::LoadVar(mod_ref_idx));
+                self.emit(Instruction::IndexGet);
+                self.emit(Instruction::StoreVar(key_idx));
+            }
+        }
+    }
+
+    fn is_std_module(name: &str) -> bool {
+        matches!(name, "math" | "random")
+    }
+
+    fn compile_flat_import(&mut self, mod_path: &str, _resolved: &[String]) {
+        let bc_path = if mod_path.ends_with(".ls") {
+            mod_path[..mod_path.len() - 3].to_string() + ".lsbc"
+        } else {
+            format!("{}.lsbc", mod_path)
+        };
+
+        let loaded = if std::path::Path::new(&bc_path).exists() {
+            match std::fs::read(&bc_path) {
+                Ok(bytes) => {
+                    let module = BytecodeModule::decode(&bytes);
+                    self.merge_module(module);
+                    true
+                }
+                Err(_) => false,
+            }
+        } else { false };
+
+        if !loaded {
+            let mod_dir = Self::get_module_dir(mod_path);
+            let (_, mut parser) = self.read_module_source(mod_path);
+            let program = parser.parse_program();
+
+            let mut mc = if mod_dir.is_empty() {
+                Compiler::new()
+            } else {
+                Compiler::with_source_dir(mod_dir)
+            };
+            for s in &program.stmts { mc.compile_stmt(s); }
+            mc.emit(Instruction::Halt);
+            let module = BytecodeModule {
+                constants: mc.constants,
+                func_entries: mc.func_entries,
+                class_entries: mc.class_entries,
+                main_code: mc.code,
+            };
+            let _ = std::fs::write(&bc_path, module.encode());
+            self.merge_module(module);
+        }
+    }
+
+    fn compile_module_import(&mut self, mod_path: &str, resolved: &[String], symbols: &[String], alias: &Option<String>) {
+        let module_name = resolved.join("/");
+
+        let storage_key = module_var_name(resolved);
+        if self.module_registry.contains_key(resolved) {
+            let key_idx = self.s(&storage_key);
+            if let Some(a) = alias {
+                self.emit(Instruction::LoadVar(key_idx));
+                let alias_idx = self.s(a);
+                self.emit(Instruction::StoreVar(alias_idx));
+            }
+            return;
+        }
+
+        let mod_dir = Self::get_module_dir(mod_path);
+        let (_, mut parser) = self.read_module_source(mod_path);
+        let program = parser.parse_program();
+
+        let mut sc = if mod_dir.is_empty() {
+            Compiler::new()
+        } else {
+            Compiler::with_source_dir(mod_dir)
+        };
+        for s in &program.stmts { sc.compile_stmt(s); }
+
+        sc.emit(Instruction::ReturnFrameAsMap);
+
+        let final_name = if let Some(a) = alias {
+            a.clone()
+        } else {
+            storage_key.clone()
+        };
+
+        let name_idx = self.s(&final_name);
+        self.module_registry.insert(resolved.to_vec(), name_idx);
+
+        let func_name = format!("__module_init__{}", module_name);
+        let entry = self.absorb_func_compiler(sc, &func_name, &[], &[]);
+        let func_idx = self.func_entries.len() as u32;
+        self.func_entries.push(entry);
+
+        self.emit(Instruction::MakeFunc(func_idx));
+        self.emit(Instruction::Call(0));
+        if !symbols.is_empty() {
+            let key_idxs: Vec<u32> = symbols.iter().map(|s| self.s(s)).collect();
+            self.emit(Instruction::FilterMap(key_idxs));
+        }
+        self.emit(Instruction::StoreVar(name_idx));
     }
 
     fn merge_module(&mut self, module: BytecodeModule) {
@@ -752,6 +902,12 @@ impl Compiler {
                 Instruction::Ask(idx) => Instruction::Ask(const_map[*idx as usize]),
                 Instruction::ReadFile(idx) => Instruction::ReadFile(const_map[*idx as usize]),
                 Instruction::Convert(idx) => Instruction::Convert(const_map[*idx as usize]),
+                Instruction::FilterMap(keys) => {
+                    Instruction::FilterMap(keys.iter().map(|&i| const_map[i as usize]).collect())
+                }
+                Instruction::MakeStdModule(idx) => {
+                    Instruction::MakeStdModule(const_map[*idx as usize])
+                }
                 _ => inst.clone(),
             }
         }).collect()
@@ -778,4 +934,8 @@ impl Compiler {
             main_code: self.code,
         }
     }
+}
+
+fn module_var_name(path: &[String]) -> String {
+    format!("__module__{}", path.join("_"))
 }

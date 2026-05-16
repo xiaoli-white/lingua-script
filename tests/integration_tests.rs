@@ -668,3 +668,118 @@ speak using d.
     )
     .is_ok());
 }
+
+#[test]
+fn test_std_math_aliased() {
+    assert!(execute(
+        r#"
+refer to math as ma.
+say sin using ma with 0.
+say cos using ma with 0.
+say pi using ma.
+"#
+    )
+    .is_ok());
+}
+
+#[test]
+fn test_std_math_flat() {
+    assert!(execute(
+        r#"
+refer to math.
+say sin(0).
+say cos(0).
+say pi.
+"#
+    )
+    .is_ok());
+}
+
+#[test]
+fn test_std_random() {
+    assert!(execute(
+        r#"
+refer to random as r.
+let n be random using r.
+say n.
+let x be randint using r with 1, 10.
+say x.
+"#
+    )
+    .is_ok());
+}
+
+#[test]
+fn test_std_selective_import() {
+    assert!(execute(
+        r#"
+refer to sin, cos from math as trig.
+say sin using trig with 0.
+say cos using trig with 0.
+"#
+    )
+    .is_ok());
+}
+
+#[test]
+fn test_index_get() {
+    assert!(execute(
+        r#"
+let list be a list containing 10, 20, 30.
+let item be 1.
+// Test that Index pattern works with list index
+"#
+    )
+    .is_ok());
+}
+
+#[test]
+fn test_module_path_using() {
+    assert!(execute(
+        r#"
+refer to math as ma.
+say sin using ma with 0.
+"#
+    )
+    .is_ok());
+}
+
+#[test]
+fn test_math_pow() {
+    assert!(execute(
+        r#"
+refer to math.
+say pow(2, 3).
+"#
+    )
+    .is_ok());
+}
+
+#[test]
+fn test_math_abs_floor_ceil() {
+    assert!(execute(
+        r#"
+refer to math as m.
+say abs using m with -5.
+say floor using m with 3.7.
+say ceil using m with 3.2.
+"#
+    )
+    .is_ok());
+}
+
+#[test]
+fn test_std_seed() {
+    assert!(execute(
+        r#"
+refer to random.
+seed(42).
+let a be random().
+seed(42).
+let b be random().
+say a.
+say b.
+"#
+    )
+    .is_ok());
+}

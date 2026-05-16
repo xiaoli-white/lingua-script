@@ -36,6 +36,7 @@ pub enum Expr {
         args: Vec<Expr>,
     },
     Input,
+    ModulePath(Vec<String>),
 }
 
 #[derive(Debug, Clone)]
@@ -156,8 +157,9 @@ pub enum Stmt {
         stmts: Vec<Stmt>,
     },
     Refer {
-        module: String,
+        path: Vec<String>,
         symbols: Vec<String>,
+        alias: Option<String>,
     },
 }
 

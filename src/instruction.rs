@@ -52,6 +52,9 @@ pub const OP_POP: u8 = 50;
 pub const OP_STOP: u8 = 51;
 pub const OP_EXIT: u8 = 52;
 pub const OP_HALT: u8 = 53;
+pub const OP_RETURN_FRAME_AS_MAP: u8 = 54;
+pub const OP_FILTER_MAP: u8 = 55;
+pub const OP_MAKE_STD_MODULE: u8 = 56;
 
 #[derive(Debug, Clone)]
 pub enum Instruction {
@@ -90,6 +93,9 @@ pub enum Instruction {
     Input,
     Dup, Pop,
     Stop, Exit, Halt,
+    ReturnFrameAsMap,
+    FilterMap(Vec<u32>),
+    MakeStdModule(u32),
 }
 
 impl Instruction {
@@ -149,6 +155,9 @@ impl Instruction {
             Instruction::Stop => OP_STOP,
             Instruction::Exit => OP_EXIT,
             Instruction::Halt => OP_HALT,
+            Instruction::ReturnFrameAsMap => OP_RETURN_FRAME_AS_MAP,
+            Instruction::FilterMap(_) => OP_FILTER_MAP,
+            Instruction::MakeStdModule(_) => OP_MAKE_STD_MODULE,
         }
     }
 
@@ -224,6 +233,16 @@ impl Instruction {
             Instruction::Stop => buf.push(OP_STOP),
             Instruction::Exit => buf.push(OP_EXIT),
             Instruction::Halt => buf.push(OP_HALT),
+            Instruction::ReturnFrameAsMap => buf.push(OP_RETURN_FRAME_AS_MAP),
+            Instruction::FilterMap(keys) => {
+                buf.push(OP_FILTER_MAP);
+                push_u32(buf, keys.len() as u32);
+                for &k in keys { push_u32(buf, k); }
+            }
+            Instruction::MakeStdModule(idx) => {
+                buf.push(OP_MAKE_STD_MODULE);
+                push_u32(buf, *idx);
+            }
         }
     }
 
@@ -311,6 +330,14 @@ impl Instruction {
             OP_STOP => Instruction::Stop,
             OP_EXIT => Instruction::Exit,
             OP_HALT => Instruction::Halt,
+            OP_RETURN_FRAME_AS_MAP => Instruction::ReturnFrameAsMap,
+            OP_FILTER_MAP => {
+                let count = read_u32(data, offset) as usize;
+                let mut keys = Vec::with_capacity(count);
+                for _ in 0..count { keys.push(read_u32(data, offset)); }
+                Instruction::FilterMap(keys)
+            }
+            OP_MAKE_STD_MODULE => Instruction::MakeStdModule(read_u32(data, offset)),
             _ => panic!("unknown opcode {}", op),
         }
     }
