@@ -146,13 +146,13 @@ impl Lexer {
                 self.advance();
                 self.skip_ws();
                 let next = self.peek();
-                
+
                 if next.map_or(false, |n| n.is_alphabetic() || n == '_') {
                     if Self::kw(&s).is_some() {
                         self.pos = saved;
                         break;
                     }
-                    
+
                     let mut next_word = String::new();
                     while let Some(nc) = self.peek() {
                         if nc.is_alphanumeric() || nc == '_' {
@@ -182,6 +182,19 @@ impl Lexer {
             } else { break; }
         }
         s
+    }
+
+    fn read_backtick_ident(&mut self) -> String {
+        let mut s = String::new();
+        while let Some(c) = self.peek() {
+            if c == '`' {
+                self.advance();
+                break;
+            }
+            s.push(c);
+            self.advance();
+        }
+        s.trim().to_string()
     }
 
     fn try_read_number_words(&mut self, first_word: &str) -> Option<f64> {
@@ -265,6 +278,10 @@ impl Lexer {
                 return Token::String(self.read_multi_string());
             }
             return Token::String(self.read_string());
+        }
+
+        if c == '`' {
+            return Token::Identifier(self.read_backtick_ident());
         }
 
         if c.is_ascii_digit() {
