@@ -4,11 +4,16 @@ use crate::lexer::Token;
 pub struct Parser {
     tokens: Vec<Token>,
     pos: usize,
+    pub errors: Vec<String>,
 }
 
 impl Parser {
     pub fn new(tokens: Vec<Token>) -> Self {
-        Parser { tokens, pos: 0 }
+        Parser { tokens, pos: 0, errors: Vec::new() }
+    }
+
+    fn error(&mut self, msg: String) {
+        self.errors.push(msg);
     }
 
     fn peek(&self) -> &Token {
@@ -109,10 +114,14 @@ impl Parser {
             stmts.push(stmt);
             while self.expect_peek(&Token::Dot) {}
             if self.pos == pos_before {
-                panic!("parse_program: stuck at pos {} token {:?}", pos_before, self.peek());
+                self.error(format!("unexpected token {:?} at position {}", self.peek(), self.pos));
+                self.advance();
             }
             guard += 1;
-            if guard > 1000 { panic!("parse_program: too many statements"); }
+            if guard > 1000 { 
+                self.error("too many statements, possible infinite loop".to_string());
+                break; 
+            }
         }
         Program { stmts }
     }
@@ -193,7 +202,7 @@ impl Parser {
             self.expect_peek(&Token::Colon);
             otherwise = self.parse_block_until(&[Token::End]);
         }
-        self.expect_peek(&Token::End);
+        if !self.expect_peek(&Token::End) { panic!("expected 'end'"); }
         Stmt::If { condition, body, otherwise }
     }
 
@@ -203,14 +212,14 @@ impl Parser {
             let times = self.parse_expr();
             self.expect_peek(&Token::Colon);
             let body = self.parse_block_until(&[Token::End]);
-            self.expect_peek(&Token::End);
+            if !self.expect_peek(&Token::End) { panic!("expected 'end'"); }
             Stmt::Repeat { times, body }
         } else {
             let times = self.parse_expr();
             self.expect_peek(&Token::Times);
             self.expect_peek(&Token::Colon);
             let body = self.parse_block_until(&[Token::End]);
-            self.expect_peek(&Token::End);
+            if !self.expect_peek(&Token::End) { panic!("expected 'end'"); }
             Stmt::Repeat { times, body }
         }
     }
@@ -223,7 +232,7 @@ impl Parser {
         let collection = self.parse_expr();
         self.expect_peek(&Token::Colon);
         let body = self.parse_block_until(&[Token::End]);
-        self.expect_peek(&Token::End);
+        if !self.expect_peek(&Token::End) { panic!("expected 'end'"); }
         Stmt::ForEach { var, collection, body }
     }
 
@@ -232,7 +241,7 @@ impl Parser {
         let condition = self.parse_expr();
         self.expect_peek(&Token::Colon);
         let body = self.parse_block_until(&[Token::End]);
-        self.expect_peek(&Token::End);
+        if !self.expect_peek(&Token::End) { panic!("expected 'end'"); }
         Stmt::While { condition, body }
     }
 
@@ -241,7 +250,7 @@ impl Parser {
         self.expect_peek(&Token::Here);
         self.expect_peek(&Token::Colon);
         let body = self.parse_block_until(&[Token::End]);
-        self.expect_peek(&Token::End);
+        if !self.expect_peek(&Token::End) { panic!("expected 'end'"); }
         Stmt::StartHere(body)
     }
 
@@ -349,12 +358,12 @@ impl Parser {
                         }
                         self.expect_peek(&Token::Colon);
                         let body = self.parse_block_until(&[Token::End]);
-                        self.expect_peek(&Token::End);
+                        if !self.expect_peek(&Token::End) { panic!("expected 'end'"); }
                         constructor = Some(ClassMethod { name: "create".into(), params, body });
                     } else if self.expect_peek(&Token::Destroy) {
                         self.expect_peek(&Token::Colon);
                         let body = self.parse_block_until(&[Token::End]);
-                        self.expect_peek(&Token::End);
+                        if !self.expect_peek(&Token::End) { panic!("expected 'end'"); }
                         destructor = Some(ClassMethod { name: "destroy".into(), params: vec![], body });
                     } else {
                         panic!("expected create or destroy after on");
@@ -370,7 +379,7 @@ impl Parser {
                     }
                     self.expect_peek(&Token::Colon);
                     let body = self.parse_block_until(&[Token::End]);
-                    self.expect_peek(&Token::End);
+                    if !self.expect_peek(&Token::End) { panic!("expected 'end'"); }
                     methods.push(ClassMethod { name, params, body });
                     while self.expect_peek(&Token::Dot) {}
                 }
@@ -390,14 +399,14 @@ impl Parser {
                     }
                     self.expect_peek(&Token::Colon);
                     let body = self.parse_block_until(&[Token::End]);
-                    self.expect_peek(&Token::End);
+                    if !self.expect_peek(&Token::End) { panic!("expected 'end'"); }
                     methods.push(ClassMethod { name, params, body });
                     while self.expect_peek(&Token::Dot) {}
                 }
                 _ => panic!("unexpected token in class body: {:?}", self.peek()),
             }
         }
-        self.expect_peek(&Token::End);
+        if !self.expect_peek(&Token::End) { panic!("expected 'end'"); }
         Stmt::ClassDef { name, parent, implements, fields, constructor, destructor, methods, publics }
     }
 
@@ -434,7 +443,7 @@ impl Parser {
                 _ => panic!("unexpected token in interface body: {:?}", self.peek()),
             }
         }
-        self.expect_peek(&Token::End);
+        if !self.expect_peek(&Token::End) { panic!("expected 'end'"); }
         Stmt::InterfaceDef { name, extends, methods }
     }
 
@@ -517,7 +526,13 @@ impl Parser {
         }
         self.expect_peek(&Token::Colon);
         let body = self.parse_block_until(&[Token::End]);
-        self.expect_peek(&Token::End);
+        if !self.expect_peek(&Token::End) {
+            if self.peek() == &Token::EOF {
+                self.error("incomplete function definition, expected 'end'".to_string());
+            } else {
+                self.error("expected 'end'".to_string());
+            }
+        }
         Stmt::FuncDef { name, params, body }
     }
 
@@ -549,7 +564,7 @@ impl Parser {
         self.expect_peek(&Token::Fails);
         self.expect_peek(&Token::Colon);
         let body = self.parse_block_until(&[Token::End]);
-        self.expect_peek(&Token::End);
+        if !self.expect_peek(&Token::End) { panic!("expected 'end'"); }
         Stmt::Block(body)
     }
 
@@ -575,7 +590,7 @@ impl Parser {
             self.expect_peek(&Token::Colon);
             finally_body = self.parse_block_until(&[Token::End]);
         }
-        self.expect_peek(&Token::End);
+        if !self.expect_peek(&Token::End) { panic!("expected 'end'"); }
         Stmt::Try { body, catch_type, catch_body, finally_body }
     }
 
@@ -598,7 +613,7 @@ impl Parser {
             self.expect_peek(&Token::Colon);
             finally_body = self.parse_block_until(&[Token::End]);
         }
-        self.expect_peek(&Token::End);
+        if !self.expect_peek(&Token::End) { panic!("expected 'end'"); }
         Stmt::Try { body, catch_type: None, catch_body, finally_body }
     }
 
@@ -760,7 +775,6 @@ impl Parser {
 
     fn parse_block_until(&mut self, terminators: &[Token]) -> Vec<Stmt> {
         let mut stmts = Vec::new();
-        let mut guard = 0;
         loop {
             if self.peek() == &Token::EOF { break; }
             if terminators.iter().any(|t| self.peek() == t) { break; }
@@ -769,10 +783,8 @@ impl Parser {
             stmts.push(stmt);
             while self.expect_peek(&Token::Dot) {}
             if self.pos == pos_before {
-                panic!("parse_block_until: stuck at pos {} token {:?}", pos_before, self.peek());
+                self.advance();
             }
-            guard += 1;
-            if guard > 1000 { panic!("parse_block_until: too many iterations"); }
         }
         stmts
     }

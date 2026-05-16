@@ -80,6 +80,38 @@ impl VM {
         self.globals = globals;
     }
 
+    pub fn get_func_defs(&self) -> &Vec<FuncDef> {
+        &self.func_defs
+    }
+
+    pub fn get_class_defs(&self) -> &Vec<ClassDef> {
+        &self.class_defs
+    }
+
+    pub fn set_ip(&mut self, ip: usize) {
+        self.ip = ip as isize;
+    }
+
+    pub fn code_len(&self) -> usize {
+        self.code.len()
+    }
+
+    pub fn reset(&mut self, code: Vec<Instruction>, constants: ConstantPool, func_defs: Vec<FuncDef>, class_defs: Vec<ClassDef>) {
+        self.constants = constants;
+        self.stack.clear();
+        self.vars.clear();
+        self.code = code;
+        self.ip = 0;
+        self.func_defs = func_defs;
+        self.class_defs = class_defs;
+        self.call_stack.clear();
+        self.try_stack.clear();
+        self.error_flag = false;
+        self.error_value = None;
+        self.halted = false;
+        self.pending_instance = None;
+    }
+
     fn push(&mut self, val: Value) {
         self.stack.push(val);
     }
