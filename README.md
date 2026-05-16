@@ -220,6 +220,64 @@ increment using c with 5.
 let c be fresh Counter with 100.
 ```
 
+### Operator Overloading
+
+Define custom behavior for operators using `when` inside a class:
+
+```linguascript
+define a Vec:
+    it has x which is 0.
+
+    on create with n:
+        x becomes n.
+    end.
+
+    when added to with other:
+        return Vec with x added to other.
+    end.
+
+    when multiplied by with other:
+        return Vec with x multiplied by other.
+    end.
+
+    when negated:
+        return Vec with 0 minus x.
+    end.
+
+    when equals with other:
+        return x is equal to other.
+    end.
+
+    when greater than with other:
+        return x is greater than other.
+    end.
+end.
+
+let a be instantiate Vec with 3.
+let b be instantiate Vec with 5.
+let c be a added to b.     "calls when added to with other"
+
+let d be -a.               "calls when negated"
+```
+
+Method names support multi-word identifiers (joined with `_`):
+
+| Operator Syntax        | Internal Method Name     |
+|------------------------|--------------------------|
+| `when added to`        | `added_to`               |
+| `when subtracted by`   | `subtracted_by`          |
+| `when multiplied by`   | `multiplied_by`          |
+| `when divided by`      | `divided_by`             |
+| `when remainder of`    | `remainder_of`           |
+| `when negated`         | `negated`                |
+| `when inverted`        | `inverted`               |
+| `when equals`          | `equals`                 |
+| `when not equals`      | `not_equals`             |
+| `when greater than`    | `greater_than`           |
+| `when less than`       | `less_than`              |
+| `when greater than or equal to` | `greater_than_or_equal_to` |
+| `when less than or equal to`    | `less_than_or_equal_to`  |
+
 ### Exception Handling
 
 ```linguascript
@@ -244,10 +302,51 @@ end.
 
 ### Modules
 
+Flat import all exports from a module:
+
 ```linguascript
-refer to helper.
-say module_var.
+refer to math.
+say sin(0).
+say pi.
 ```
+
+Aliased import with a namespace:
+
+```linguascript
+refer to math as m.
+say sin using m with 0.
+```
+
+Selective import with namespace:
+
+```linguascript
+refer to sin, cos from math as trig.
+say sin using trig with 0.
+```
+
+Module path resolution uses the `of` chain:
+
+```linguascript
+refer to random of math.
+```
+
+Aliasing with `as`:
+
+```linguascript
+refer to math as ma.
+refer to sin, cos of math as trig.
+```
+
+Using module functions by namespace:
+
+```linguascript
+refer to math as m.
+say sin using m with 0.
+say cos using m with 0.
+say pi using m.
+```
+
+Standard library modules: `math` (sin, cos, sqrt, abs, floor, ceil, pow, pi, e) and `random` (random, randint, uniform, seed).
 
 Modules are compiled to `.lsbc` bytecode on first import and loaded directly on subsequent runs for faster startup.
 
@@ -375,7 +474,7 @@ Instances with an `on destroy` method have their destructor queued when the refe
 cargo test
 ```
 
-60 integration tests cover number parsing, variables, arithmetic, comparisons, logic, control flow, lists, maps, types, functions, classes, inheritance, interfaces, exceptions, methods, and GC shared references.
+74 integration tests cover number parsing, variables, arithmetic, comparisons, logic, control flow, lists, maps, types, functions, classes, inheritance, interfaces, exceptions, methods, module imports, standard library, operator overloading, and GC shared references.
 
 ```bash
 cargo run -- examples/comprehensive_test.ls

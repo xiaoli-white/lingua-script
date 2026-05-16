@@ -381,6 +381,19 @@ impl Parser {
                     publics.push(name);
                     while self.expect_peek(&Token::Dot) {}
                 }
+                Token::When => {
+                    self.advance();
+                    let name = self.parse_multi_word_method_name();
+                    let mut params = Vec::new();
+                    if self.expect_peek(&Token::With) {
+                        params = self.parse_param_list();
+                    }
+                    self.expect_peek(&Token::Colon);
+                    let body = self.parse_block_until(&[Token::End]);
+                    self.expect_peek(&Token::End);
+                    methods.push(ClassMethod { name, params, body });
+                    while self.expect_peek(&Token::Dot) {}
+                }
                 _ => panic!("unexpected token in class body: {:?}", self.peek()),
             }
         }
@@ -472,6 +485,27 @@ impl Parser {
         Self::token_to_name(&tok).unwrap_or_else(|| {
             panic!("expected a name, got {:?}", self.tokens.get(self.pos - 1))
         })
+    }
+
+    fn parse_multi_word_method_name(&mut self) -> String {
+        let mut parts = Vec::new();
+        loop {
+            match self.peek() {
+                Token::With | Token::Colon | Token::LParen | Token::Dot | Token::EOF => break,
+                _ => {
+                    let tok = self.advance();
+                    if let Some(name) = Self::token_to_name(tok) {
+                        parts.push(name);
+                    } else {
+                        panic!("unexpected token in method name: {:?}", self.tokens.get(self.pos - 1));
+                    }
+                }
+            }
+        }
+        if parts.is_empty() {
+            panic!("expected method name after when");
+        }
+        parts.join("_")
     }
 
     fn parse_func_def(&mut self) -> Stmt {
@@ -1242,6 +1276,7 @@ impl Parser {
             In => "in".into(),
             Of => "of".into(),
             By => "by".into(),
+            Than => "than".into(),
             To => "to".into(),
             Capitalize => "capitalize".into(),
             Extends => "extends".into(),
@@ -1283,6 +1318,9 @@ impl Parser {
             Attempt => "attempt".into(),
             If => "if".into(),
             Fails => "fails".into(),
+            Greater => "greater".into(),
+            Less => "less".into(),
+            Equal => "equal".into(),
             Added => "added".into(),
             Subtracted => "subtracted".into(),
             Multiplied => "multiplied".into(),

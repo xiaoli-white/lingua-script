@@ -783,3 +783,113 @@ say b.
     )
     .is_ok());
 }
+
+#[test]
+fn test_operator_add() {
+    assert!(execute(
+        r#"
+define a Box:
+    it has value which is 0.
+    on create with n:
+        value becomes n.
+    end.
+    when added to with other:
+        return value added to other.
+    end.
+end.
+let b be instantiate Box with 10.
+let r be b added to 5.
+say r.
+"#
+    )
+    .is_ok());
+}
+
+#[test]
+fn test_operator_multiply() {
+    assert!(execute(
+        r#"
+define a Box:
+    it has value which is 0.
+    on create with n:
+        value becomes n.
+    end.
+    when multiplied by with other:
+        return value multiplied by other.
+    end.
+end.
+let b be instantiate Box with 6.
+let r be b multiplied by 4.
+say r.
+"#
+    )
+    .is_ok());
+}
+
+#[test]
+fn test_operator_equals() {
+    assert!(execute(
+        r#"
+define a Box:
+    it has value which is 0.
+    on create with n:
+        value becomes n.
+    end.
+    when equals with other:
+        return value is equal to other.
+    end.
+end.
+let a be instantiate Box with 5.
+let b be instantiate Box with 5.
+let v be a is equal to b.
+say v.
+"#
+    )
+    .is_ok());
+}
+
+#[test]
+fn test_operator_negated() {
+    assert!(execute(
+        r#"
+define a Box:
+    it has value which is 0.
+    on create with n:
+        value becomes n.
+    end.
+    when negated:
+        return 0 minus value.
+    end.
+end.
+let b be instantiate Box with 7.
+let r be -b.
+say r.
+"#
+    )
+    .is_ok());
+}
+
+#[test]
+fn test_operator_multi_word_method() {
+    assert!(execute(
+        r#"
+define a Box:
+    it has value which is 0.
+    on create with n:
+        value becomes n.
+    end.
+    when greater than with other:
+        return value is greater than other.
+    end.
+end.
+let a be instantiate Box with 10.
+let b be instantiate Box with 5.
+if a is greater than b:
+    say "bigger".
+otherwise:
+    say "smaller".
+end.
+"#
+    )
+    .is_ok());
+}
