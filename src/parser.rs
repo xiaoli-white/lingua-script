@@ -164,7 +164,18 @@ impl Parser {
                         return self.parse_becomes(name);
                     }
                 }
-                Stmt::Expression(self.parse_expr())
+                let expr = self.parse_expr();
+                if let Expr::Identifier(_) = &expr {
+                    if self.peek() == &Token::Dot && self.peek_ahead(1) != &Token::Dot {
+                        self.advance();
+                        return Stmt::FuncCall {
+                            func: expr,
+                            args: Vec::new(),
+                            result_var: None,
+                        };
+                    }
+                }
+                Stmt::Expression(expr)
             }
         }
     }
