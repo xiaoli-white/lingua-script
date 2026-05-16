@@ -141,6 +141,44 @@ impl Lexer {
             if c.is_alphanumeric() || c == '_' {
                 s.push(c);
                 self.advance();
+            } else if c == ' ' {
+                let saved = self.pos;
+                self.advance();
+                self.skip_ws();
+                let next = self.peek();
+                
+                if next.map_or(false, |n| n.is_alphabetic() || n == '_') {
+                    if Self::kw(&s).is_some() {
+                        self.pos = saved;
+                        break;
+                    }
+                    
+                    let mut next_word = String::new();
+                    while let Some(nc) = self.peek() {
+                        if nc.is_alphanumeric() || nc == '_' {
+                            next_word.push(nc);
+                            self.advance();
+                        } else {
+                            break;
+                        }
+                    }
+                    if !next_word.is_empty() {
+                        if Self::kw(&next_word).is_none() {
+                            s.push(' ');
+                            s.push_str(&next_word);
+                            continue;
+                        } else {
+                            self.pos = saved;
+                            break;
+                        }
+                    } else {
+                        self.pos = saved;
+                        break;
+                    }
+                } else {
+                    self.pos = saved;
+                    break;
+                }
             } else { break; }
         }
         s
@@ -179,7 +217,7 @@ impl Lexer {
             "say" => Say, "ask" => Ask, "and" => And, "save" => Save,
             "to" => To, "read" => Read, "write" => Write,
             "true" => True, "false" => False,
-            "define" => Define, "an" => A,
+            "define" => Define, "a" => A, "an" => A,
             "it" => It, "has" => Has, "which" => Which,
             "on" => On, "create" => Create, "destroy" => Destroy,
             "make" => Make, "public" => Public,
