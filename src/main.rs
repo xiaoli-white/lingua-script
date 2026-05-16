@@ -1,7 +1,11 @@
 use std::fs;
-use clap::Parser;
+use clap::Parser as ClapParser;
+use lingua_script::lexer::{Lexer, Token};
+use lingua_script::parser::Parser;
+use lingua_script::compiler::Compiler;
+use lingua_script::vm::VM;
 
-#[derive(Parser)]
+#[derive(ClapParser)]
 #[command(name = "lingua-script", version, about = "LinguaScript interpreter - A narrative programming language")]
 struct Cli {
     #[arg(help = "Path to a .ls or .lsbc file")]
@@ -19,9 +23,6 @@ struct Cli {
     #[arg(short = 'i', long = "inspect", help = "Print tokens + AST + bytecode")]
     inspect: bool,
 
-    #[arg(short = 'r', long = "repl", help = "Start interactive REPL")]
-    repl: bool,
-
     #[arg(short = 'o', long = "bytecode", help = "Export bytecode to file")]
     bytecode_output: Option<String>,
 }
@@ -29,9 +30,7 @@ struct Cli {
 fn main() {
     let cli = Cli::parse();
 
-    if cli.repl {
-        run_repl();
-    } else if let Some(path) = &cli.file {
+    if let Some(path) = &cli.file {
         if path.ends_with(".lsbc") {
             run_bytecode_file(path);
         } else {
@@ -52,67 +51,6 @@ fn main() {
         eprintln!("For more info: lingua-script --help");
         std::process::exit(1);
     }
-}
-
-fn run_repl() {
-    use std::io::{self, Write};
-
-    println!("LinguaScript REPL (enter a blank line to execute, 'exit' to quit)");
-    let mut buffer = String::new();
-
-    loop {
-        print!("> ");
-        io::stdout().flush().unwrap();
-
-        let mut line = String::new();
-        if io::stdin().read_line(&mut line).is_err() { break; }
-
-        let trimmed = line.trim();
-        if trimmed == "exit" || trimmed == "quit" { break; }
-
-        if trimmed.is_empty() && !buffer.is_empty() {
-            if let Err(e) = run_repl_input(&buffer) {
-                eprintln!("error: {}", e);
-            }
-            buffer.clear();
-            continue;
-        }
-
-        if !trimmed.is_empty() {
-            buffer.push_str(line.as_str());
-        }
-    }
-    if !buffer.is_empty() {
-        if let Err(e) = run_repl_input(&buffer) {
-            eprintln!("error: {}", e);
-        }
-    }
-    println!("bye.");
-}
-
-fn run_repl_input(source: &str) -> Result<(), String> {
-    use lingua_script::lexer::{Lexer, Token};
-    use lingua_script::parser::Parser;
-    use lingua_script::compiler::Compiler;
-    use lingua_script::vm::VM;
-
-    let mut lexer = Lexer::new(source);
-    let mut tokens = Vec::new();
-    loop {
-        let tok = lexer.next_token();
-        if tok == Token::EOF { break; }
-        tokens.push(tok);
-    }
-    if tokens.is_empty() { return Ok(()); }
-
-    let mut parser = Parser::new(tokens);
-    let program = parser.parse_program();
-
-    let compiler = Compiler::new();
-    let module = compiler.compile(&program);
-    let (func_defs, class_defs) = module.resolve();
-    let mut vm = VM::new(module.main_code, module.constants, func_defs, class_defs);
-    vm.run()
 }
 
 fn run_file(path: &str, source: &str, cli: &Cli) {
