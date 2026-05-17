@@ -150,7 +150,7 @@ pub enum Stmt {
         name: String,
         parent: Option<String>,
         implements: Vec<String>,
-        fields: Vec<(String, Expr)>,
+        fields: Vec<(String, Option<Expr>)>,
         constructor: Option<ClassMethod>,
         destructor: Option<ClassMethod>,
         methods: Vec<ClassMethod>,

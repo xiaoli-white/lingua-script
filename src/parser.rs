@@ -378,10 +378,14 @@ impl Parser {
                         Token::Identifier(n) => n.clone(),
                         _ => panic!("expected field name"),
                     };
-                    self.expect_peek(&Token::Which);
-                    self.expect_peek(&Token::Is);
-                    let value = self.parse_expr();
-                    fields.push((name, value));
+                    if self.peek() == &Token::Which {
+                        self.expect_peek(&Token::Which);
+                        self.expect_peek(&Token::Is);
+                        let value = self.parse_expr();
+                        fields.push((name, Some(value)));
+                    } else {
+                        fields.push((name, None));
+                    }
                     while self.expect_peek(&Token::Dot) {}
                 }
                 Token::On => {

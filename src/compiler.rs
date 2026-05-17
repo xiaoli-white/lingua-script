@@ -582,8 +582,23 @@ impl Compiler {
                 }
 
                 let mut field_values: Vec<(String, Value)> = fields.iter()
-                    .map(|(n, _)| (n.clone(), Value::Null))
+                    .map(|(n, expr_opt)| {
+                        let val = match expr_opt {
+                            Some(_) => Value::Null,
+                            None => Value::Null,
+                        };
+                        (n.clone(), val)
+                    })
                     .collect();
+
+                for (name, expr_opt) in fields.iter() {
+                    if let Some(expr) = expr_opt {
+                        self.compile_expr(expr);
+                        let temp_var = format!("__field_init_{}", name);
+                        let temp_idx = self.s(&temp_var);
+                        self.emit(Instruction::StoreVar(temp_idx));
+                    }
+                }
 
                 if let Some(ref parent_name) = parent {
                     if let Some(pf) = self.class_fields.iter().find(|(n, _)| n == parent_name) {
