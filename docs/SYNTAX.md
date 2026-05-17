@@ -4,201 +4,164 @@
 
 LinguaScript is a narrative-style programming language designed to read like natural English prose while maintaining programming rigor. It minimizes symbolic punctuation (`()`, `{}`, `;`, `=`) in favor of natural language connectives.
 
+**Key design principles:**
+- Every statement ends with a period `.`
+- Colons `:` open code blocks, `end.` closes them
+- Keywords are English words; symbolic operators are kept minimal
+
+---
+
 ## Lexical Structure
 
 ### Comments
 
-- Line comments: `// comment text`
-- Narrative comments: `note that comment text.`
+| Style | Syntax | Example |
+|-------|--------|---------|
+| Line comment | `// text` | `// this is ignored` |
+| Narrative comment | `note that text.` | `note that this is also ignored.` |
 
 ### Identifiers
 
-- Standard identifiers: alphanumeric characters and underscores (e.g., `my_var`, `score`)
-- Multi-word identifiers: words separated by spaces, parsed as a single identifier if none of the words are keywords (e.g., `take damage`)
-- Backtick-quoted identifiers: `` `identifier with special chars` ``
-- Keywords can be used as identifiers via backtick quoting
+| Style | Rules | Example |
+|-------|-------|---------|
+| Standard | Letters, digits, underscores | `my_var`, `score`, `_temp` |
+| Multi-word | Space-separated words (none can be keywords) | `take damage`, `player name` |
+| Backtick-quoted | Anything between backticks | `` `weird-name!` `` |
 
 ### Literals
 
-#### Numbers
+**Numbers** — Arabic numerals, English words, or mixed:
 
-- Arabic numerals: `42`, `3.14`
-- English number words: `zero`, `one`, `two`, ..., `ten`, `hundred`, `thousand`, `million`, `billion`, `trillion`
-- Special words: `half`
-- Decimal points: `point` (e.g., `three point one four`)
-- Mixed notation allowed: `35 thousand`
+| Form | Examples |
+|------|----------|
+| Arabic | `42`, `3.14`, `-7` |
+| English words | `zero`, `one`, `ten`, `hundred`, `thousand`, `million`, `billion`, `trillion` |
+| Decimal in words | `three point one four`, `zero point five` |
+| Special | `half` (= 0.5) |
+| Mixed | `35 thousand`, `2 hundred` |
 
-#### Strings
+**Strings:**
 
-- Single-line: `"hello world"`
-- Multi-line: `"""line one\nline two"""`
-- Escape sequences: `\"`, `\\`, `\n`, `\t`
+| Form | Syntax | Example |
+|------|--------|---------|
+| Single-line | `"..."` | `"hello world"` |
+| Multi-line | `"""..."""` | `"""line one\nline two"""` |
+| Escapes | `\"`, `\\`, `\n`, `\t` | `"say \"hi\""` |
 
-#### Booleans
+**Other literals:**
 
-- `true`, `false`
+| Type | Values |
+|------|--------|
+| Boolean | `true`, `false` |
+| Null | `null`, `empty` |
 
-#### Null
-
-- `null`, `empty`
-
-### Operators (Symbolic)
+### Symbolic Operators
 
 | Symbol | Meaning |
 |--------|---------|
-| `+` | Addition / String concatenation |
-| `-` | Subtraction / Negation |
+| `+` | Addition / string concatenation |
+| `-` | Subtraction / negation |
 | `*` | Multiplication |
 | `/` | Division |
-| `//` | Line comment start |
-| `:` | Block opener |
-| `.` | Statement terminator |
-| `,` | Argument / element separator |
-| `(` `)` | Expression grouping, function call args |
+| `//` | Start of line comment |
+| `:` | Opens a code block |
+| `.` | Ends a statement |
+| `,` | Separates arguments or list elements |
+| `(` `)` | Groups expressions or holds function call arguments |
 
 ### Keywords
 
 ```
-is, isnt, be, becomes, let, true, false
-when, otherwise, end
-repeat, times, for, each, in, while
-start, here, stop, exit, with
-say, ask, and, save, to
-read, write
-define, a, an, it, has, which, on, create, destroy, make, public
-instantiate, fresh
-note, that
-refer, from, chapter
-beware, incase, of, regardless
-attempt, if, fails
-raise, return
-run, execute
-convert, type
-added, subtracted, multiplied, divided
-plus, minus
-remainder, square, root
-sum, product, as
-not, or
-greater, less, equal
-using
-empty, null
-list, containing, map
-add, remove
-the, by, than
-capitalize, extends, input
-interface, can, implements
-super
+a, added, an, and, ask, attempt, be, becomes, beware, by, can, capitalize,
+case, chapter, containing, convert, create, define, destroy, divided, each,
+empty, end, equal, execute, exit, extends, fails, false, for, fresh, from,
+greater, has, here, if, implements, in, incase, input, instantiate, interface,
+is, isnt, it, less, let, list, make, map, minus, multiplied, note, not, null,
+of, on, or, otherwise, plus, product, public, raise, read, regardless, refer,
+remainder, repeat, return, root, run, save, say, square, start, stop,
+subtracted, sum, super, than, that, the, times, to, true, type, using, when,
+which, while, with, write
 ```
 
-## Grammar
+---
 
-### Program Structure
+## Statements
+
+Every statement ends with a period `.`. Blocks are opened with `:` and closed with `end.`.
+
+### Variables
+
+**Define a variable (narrative style):**
+```
+name is value.
+```
+Example: `score is zero.`
+
+**Define a variable (declarative style):**
+```
+let name be value.
+```
+Example: `let health be one hundred.`
+
+**Reassign a variable:**
+```
+name becomes value.
+```
+Example: `score becomes one hundred.`
+
+---
+
+### Output and Input
+
+**Print to console:**
+```
+say expression.
+```
+Example: `say "Hello".` / `say score + 10.`
+
+**Prompt user and save input:**
+```
+ask prompt and save to variable.
+```
+Example: `ask "Enter name:" and save to user_name.`
+
+**Read from stdin (expression form):**
+```
+input
+```
+Example: `let line be input.`
+
+---
+
+### File Operations
+
+**Read a file:**
+```
+read filename and save to variable.
+```
+Example: `read "data.txt" and save to content.`
+
+**Write to a file:**
+```
+write content to filename.
+```
+Example: `write "hello" to "output.txt".`
+
+---
+
+### Conditional
 
 ```
-program     → statement* EOF
-statement   → let_stmt | var_def | assignment
-            | when_stmt | repeat_stmt | foreach_stmt | while_stmt
-            | start_stmt | stop_stmt | exit_stmt
-            | say_stmt | ask_stmt | read_stmt | write_stmt
-            | func_def | func_call_stmt
-            | class_def | interface_def
-            | beware_stmt | attempt_stmt | raise_stmt | return_stmt
-            | refer_stmt | chapter_stmt
-            | add_remove_stmt | convert_stmt | make_public_stmt
-            | note_stmt | expression_stmt
+when condition:
+    statements
+otherwise:
+    statements
+end.
 ```
 
-Statements are terminated by `.` (dot).
+The `otherwise` block is optional.
 
-### Variable Definition
-
-```
-var_def     → name "is" expression "."
-let_stmt    → "let" name "be" expression "."
-assignment  → name "becomes" expression "."
-```
-
-Examples:
-```
-score is zero.
-let health be one hundred.
-score becomes one hundred.
-```
-
-### Expressions
-
-```
-expression  → or_expr
-or_expr     → and_expr ("or" and_expr)*
-and_expr    → comparison ("and" comparison)*
-comparison  → addition (("is" | "isnt" | "not") comp_op addition)?
-comp_op     → "greater" "than" ("or" "equal" "to")?
-            | "less" "than" ("or" "equal" "to")?
-            | "equal" "to"
-            | "not" "equal" "to"
-addition    → multiplication (("+" | "-" | "added" "to" | "subtracted" ("from" | "by")) multiplication)*
-multiplication → unary (("*" | "/" | "multiplied" "by" | "divided" "by") unary)*
-```
-
-#### Unary Expressions
-
-```
-unary       → "-" unary
-            | "not" unary
-            | "remainder" "of" unary "divided" "by" unary
-            | "square" "of" unary
-            | ("the" number? "root" | "root") "of" unary
-            | "sum" "of" addition
-            | "product" "of" multiplication
-            | "type" "of" unary
-            | "capitalize" unary
-            | primary
-```
-
-#### Primary Expressions
-
-```
-primary     → number | string | "true" | "false" | "null" | "empty"
-            | list_literal | map_literal
-            | "input"
-            | "instantiate" identifier ("with" args)?
-            | "fresh" identifier ("with" args)?
-            | ("run" | "execute") callable ("with" args)? ("using" object)? ("and" "save" "to" name)?
-            | "(" expression ")"
-            | identifier postfix*
-```
-
-#### Postfix Operations
-
-```
-postfix     → "(" args ")"
-            | "with" args
-            | "using" object ("with" args)?
-```
-
-#### List Literal
-
-```
-list_literal → ("a" | "an") "list" "containing" (expression ("and" | ",") expression)*
-```
-
-#### Map Literal
-
-```
-map_literal → ("a" | "an") "map" "with" (key "as" value ("and" | ",") key "as" value)*
-key         → string | identifier
-```
-
-### Control Flow
-
-#### Conditional
-
-```
-when_stmt   → "when" expression ":" body ("otherwise:" body)? "end" "."
-body        → statement*
-```
-
-Example:
+**Example:**
 ```
 when score is greater than zero:
     say "alive".
@@ -207,64 +170,84 @@ otherwise:
 end.
 ```
 
-#### Loops
+---
 
-```
-repeat_stmt → "repeat" expression "times" ":" body "end" "."
-foreach_stmt → "for" "each" name "in" expression ":" body "end" "."
-while_stmt  → "while" expression ":" body "end" "."
-```
+### Loops
 
-Examples:
+**Repeat N times:**
+```
+repeat count times:
+    statements
+end.
+```
+Example:
 ```
 repeat three times:
     say "hello".
 end.
+```
 
-for each item in items:
-    say item.
+**For-each loop:**
+```
+for each item in collection:
+    statements
 end.
+```
+Example:
+```
+for each fruit in fruits:
+    say fruit.
+end.
+```
 
+**While loop:**
+```
+while condition:
+    statements
+end.
+```
+Example:
+```
 while count is less than ten:
     count becomes count added to one.
 end.
 ```
 
-#### Program Entry and Exit
+---
 
-```
-start_stmt  → "start" "here" ":" body "end" "."
-stop_stmt   → "stop" "."
-exit_stmt   → "exit" ("with" expression)? "."
-```
+### Program Entry and Exit
 
-### Input/Output
-
+**Entry point:**
 ```
-say_stmt    → "say" expression "."
-ask_stmt    → "ask" expression "and" "save" "to" name "."
-read_stmt   → "read" expression "and" "save" "to" name "."
-write_stmt  → "write" expression "to" expression "."
+start here:
+    statements
+end.
 ```
 
-Examples:
+**Stop execution:**
 ```
-say "Hello".
-ask "Enter name:" and save to user_name.
-read "data.txt" and save to content.
-write content to "output.txt".
+stop.
 ```
+
+**Exit with status code:**
+```
+exit with code.
+```
+Example: `exit with 1.`
+
+---
 
 ### Functions
 
-#### Function Definition
-
+**Define a function:**
 ```
-func_def    → "to" name ("with" params)? ":" body "end" "."
-params      → identifier ("," identifier)*
+to name with param1, param2, ...:
+    statements
+end.
 ```
+Parameters are optional.
 
-Example:
+**Example:**
 ```
 to greet with name:
     say "Hello, " + name.
@@ -275,45 +258,69 @@ to add with a, b:
 end.
 ```
 
-#### Function Call (Statement Form)
-
+**Call a function and save result:**
 ```
-func_call_stmt → ("run" | "execute") callable ("with" args)? ("using" object)? ("and" "save" "to" name)? "."
-callable    → identifier | super_expr | "(" expression ")"
-args        → expression ("," expression)*
+run function_name with arg1, arg2, ... and save to variable.
+execute function_name with arg1, arg2, ... and save to variable.
 ```
+The `with` arguments and `and save to` clause are optional.
 
-Example:
+**Example:**
 ```
 run greet with "Alice" and save to result.
-execute calculate with 10, 20 using calculator.
+execute calculate with 10, 20.
 ```
 
-#### Return
+**Call a method on an object:**
+```
+method_name using object with arg1, arg2, ...
+```
+Example: `take_damage using warrior with 30.`
 
+**Return from a function:**
 ```
-return_stmt → "return" expression? "."
+return expression.
 ```
+or simply:
+```
+return.
+```
+
+---
 
 ### Classes
 
-#### Class Definition
+**Define a class:**
+```
+define a ClassName:
+    it has field_name which is default_value.
+    
+    on create with param1, param2, ...:
+        constructor body
+    end.
+    
+    on destroy:
+        destructor body
+    end.
+    
+    to method_name with param1, param2, ...:
+        method body
+    end.
+    
+    make member_name public.
+end.
+```
 
+**With inheritance and interfaces:**
 ```
-class_def   → "define" "a" name class_inheritance? ":" class_body "end" "."
-class_inheritance → ("extends" identifier)? ("implements" identifier ("," identifier)*)?
-class_body  → (field | constructor | destructor | method | make_public)*
-field       → "it" "has" name "which" "is" expression "."
-constructor → "on" "create" ("with" params)? ":" body "end" "."
-destructor  → "on" "destroy" ":" body "end" "."
-method      → "to" name ("with" params)? ":" body "end" "."
-            | "when" method_name ("with" params)? ":" body "end" "."
-make_public → "make" name "public" "."
+define a ClassName extends ParentClass implements Interface1, Interface2:
+    ...
+end.
 ```
 
-Example:
+**Full example:**
 ```
-define a Player extends Entity implements Damageable, Serializable:
+define a Player:
     it has name which is "Hero".
     it has hp which is 100.
 
@@ -322,57 +329,65 @@ define a Player extends Entity implements Damageable, Serializable:
     end.
 
     on destroy:
-        say name + " is destroyed.".
+        say name + " is gone.".
     end.
 
     to take_damage with amount:
         hp becomes hp subtracted by amount.
+        when hp is less than zero:
+            hp becomes zero.
+        end.
+    end.
+
+    to get_hp:
+        return hp.
     end.
 
     make take_damage public.
+    make get_hp public.
 end.
 ```
 
-#### Instantiation
-
+**Instantiate a class:**
 ```
-instantiate → "instantiate" identifier ("with" args)?
-fresh       → "fresh" identifier ("with" args)?
+let variable be instantiate ClassName with arg1, arg2, ...
+let variable be fresh ClassName with arg1, arg2, ...
 ```
+The `with` arguments are optional. `instantiate` binds to a named variable; `fresh` creates an anonymous instance (often used inline).
 
-Examples:
+**Examples:**
 ```
 let warrior be instantiate Player with "Arthur".
 let enemy be fresh Player with "Goblin".
+say get_hp using fresh Player.
 ```
 
-#### Method Call
+**Call a method:**
+```
+method_name using object with arg1, arg2, ...
+```
+Example: `take_damage using warrior with 30.`
 
+**Access parent class members:**
 ```
-method_call → name "using" object ("with" args)?
-```
-
-Example:
-```
-take_damage using warrior with 30.
-let hp be get_hp using warrior.
+super of method_name with args
+super with args
+super.method_name(args)
 ```
 
-#### Super Call
-
-```
-super_call  → "super" "of" name ("with" args)?
-super_access → "super" postfix*
-```
+---
 
 ### Interfaces
 
+**Define an interface:**
 ```
-interface_def → "define" "a" "interface" name ("extends" identifier ("," identifier)*)? ":" interface_body "end" "."
-interface_body → ("can" name ("with" params)? ".")*
+define a interface InterfaceName extends ParentInterface:
+    can method_name with param1, param2, ...
+    can another_method
+end.
 ```
 
-Example:
+**Example:**
 ```
 define a interface Damageable:
     can take_damage with amount.
@@ -380,15 +395,24 @@ define a interface Damageable:
 end.
 ```
 
+---
+
 ### Exception Handling
 
-#### Beware Style (Typed Catch)
-
+**Style 1 — beware (typed catch):**
 ```
-beware_stmt → "beware" ":" body ("in" "incase" "of" identifier ":" catch_body)? ("regardless" ":" finally_body)? "end" "."
+beware:
+    risky code
+in case of ErrorType:
+    error handling
+regardless:
+    cleanup code
+end.
 ```
 
-Example:
+The `in case of` and `regardless` blocks are both optional.
+
+**Example:**
 ```
 beware:
     raise "something went wrong".
@@ -399,13 +423,18 @@ regardless:
 end.
 ```
 
-#### Attempt Style (Generic Catch)
-
+**Style 2 — attempt (generic catch):**
 ```
-attempt_stmt → "attempt" "to" ":" body ("if" "it" "fails" ":" catch_body)? ("regardless" ":" finally_body)? "end" "."
+attempt to:
+    risky code
+if it fails:
+    error handling
+regardless:
+    cleanup code
+end.
 ```
 
-Example:
+**Example:**
 ```
 attempt to:
     raise "fail".
@@ -416,30 +445,44 @@ regardless:
 end.
 ```
 
-#### Raise
+**Raise an exception:**
+```
+raise expression.
+```
+Example: `raise "invalid input".`
 
-```
-raise_stmt  → "raise" expression "."
-```
+---
 
 ### Modules
 
-#### Chapter
-
+**Define a chapter (code section):**
 ```
-chapter_stmt → "chapter" name "." statement*
+chapter chapter_name.
+statements...
 ```
+A chapter groups all statements until the next `chapter` keyword or end of file.
 
-A chapter groups statements until the next chapter or EOF.
-
-#### Import (Refer)
-
+**Import a module:**
 ```
-refer_stmt  → "refer" "to" (name ("," name)* "from")? module_path ("as" name)? "."
-module_path → name ("of" name)*
+refer to module_name.
 ```
 
-Examples:
+**Import specific symbols:**
+```
+refer to symbol1, symbol2, ... from module_name.
+```
+
+**Import with nested path:**
+```
+refer to symbol from module of submodule.
+```
+
+**Import with alias:**
+```
+refer to module_name as alias.
+```
+
+**Examples:**
 ```
 refer to math_utils.
 refer to max, min from math_utils.
@@ -447,86 +490,168 @@ refer to helper functions of utils.
 refer to utils as u.
 ```
 
-#### Export
+**Export a member (inside a class or chapter):**
+```
+make name public.
+```
 
-```
-make_public_stmt → "make" name "public" "."
-```
+---
 
 ### Type Operations
 
+**Query the type of a value:**
 ```
-type_query  → "type" "of" expression
-convert_stmt → "convert" expression "to" identifier ("and" "save" "to" name)? "."
+type of expression
 ```
+Example: `let t be type of 42.` (returns `"number"`)
 
-Examples:
+**Convert a value to another type:**
 ```
-let t be type of 42.
+convert expression to type_name and save to variable.
+```
+Example:
+```
 convert "50" to number and save to n.
 convert 42 to string and save to s.
 ```
 
-### List Operations
+---
 
+### Lists
+
+**Create a list:**
 ```
-add_remove_stmt → "add" expression "to" identifier "."
-                | "remove" expression "from" identifier "."
+let name be a list containing item1, item2, ...
+```
+Example: `let fruits be a list containing "apple", "banana".`
+
+**Add an element:**
+```
+add element to list_name.
+```
+Example: `add "cherry" to fruits.`
+
+**Remove an element:**
+```
+remove element from list_name.
+```
+Example: `remove "banana" from fruits.`
+
+---
+
+### Maps
+
+**Create a map:**
+```
+let name be a map with "key1" as value1, "key2" as value2, ...
+```
+Keys can be strings or identifiers.
+
+**Example:**
+```
+let cfg be a map with "volume" as 80, "difficulty" as "Hard".
 ```
 
-Examples:
-```
-add "cherry" to fruits.
-remove "banana" from fruits.
-```
+---
 
 ### Miscellaneous
 
-#### Note (Comment)
-
+**Capitalize a string:**
 ```
-note_stmt   → "note" "that" ... "."
+capitalize expression
 ```
+Example: `say capitalize name.`
 
-Everything between `note that` and the next `.` is ignored.
-
-#### Capitalize
-
+**Note (narrative comment):**
 ```
-capitalize_expr → "capitalize" expression
+note that any text here is ignored.
 ```
 
-Returns the capitalized form of a string expression.
+---
 
-#### Input Expression
+## Expressions
 
+### Arithmetic
+
+| Operation | Natural Language Form | Symbolic Form |
+|-----------|----------------------|---------------|
+| Addition | `a added to b` | `a + b` |
+| Subtraction | `a subtracted from b` (b - a) | `a - b` |
+| Subtraction | `a subtracted by b` (a - b) | — |
+| Multiplication | `a multiplied by b` | `a * b` |
+| Division | `a divided by b` | `a / b` |
+| Modulo | `remainder of a divided by b` | — |
+| Square | `square of a` | — |
+| Square root | `square root of a` | — |
+| Nth root | `the n root of a` | — |
+| Sum | `sum of a + b` | — |
+| Product | `product of a * b` | — |
+| Negation | `-a` | `-a` |
+
+### Comparison
+
+| Operation | Syntax |
+|-----------|--------|
+| Equal | `a is equal to b` |
+| Not equal | `a is not equal to b` / `a isnt b` |
+| Greater than | `a is greater than b` |
+| Less than | `a is less than b` |
+| Greater or equal | `a is greater than or equal to b` |
+| Less or equal | `a is less than or equal to b` |
+
+### Logic
+
+| Operation | Syntax |
+|-----------|--------|
+| AND | `a and b` |
+| OR | `a or b` |
+| NOT | `not a` |
+
+### Function and Method Calls (Expression Form)
+
+| Form | Syntax |
+|------|--------|
+| Call with parentheses | `func(arg1, arg2)` |
+| Call with `with` | `func with arg1, arg2` |
+| Method call | `method using object with args` |
+| Instantiate (expression) | `instantiate ClassName with args` |
+| Fresh (expression) | `fresh ClassName with args` |
+| Run and save | `run func with args and save to var` |
+
+### Indexing
+
+Access list or map elements:
 ```
-input_expr  → "input"
+collection[index]
 ```
 
-Reads a line from standard input as an expression.
+---
 
 ## Operator Precedence (Lowest to Highest)
 
-1. `or`
-2. `and`
-3. Comparison: `is greater than`, `is less than`, `is equal to`, `isnt`, `is not equal to`
-4. Addition/Subtraction: `+`, `-`, `added to`, `subtracted from/by`
-5. Multiplication/Division: `*`, `/`, `multiplied by`, `divided by`
-6. Unary: `-`, `not`, `remainder of`, `square of`, `root of`, `sum of`, `product of`, `type of`, `capitalize`
-7. Primary: literals, identifiers, parenthesized expressions
-8. Postfix: function calls `()`, `with`, method calls `using`
+| Level | Operators |
+|-------|-----------|
+| 1 (lowest) | `or` |
+| 2 | `and` |
+| 3 | `is greater than`, `is less than`, `is equal to`, `isnt`, `is not equal to` |
+| 4 | `+`, `-`, `added to`, `subtracted from`, `subtracted by` |
+| 5 | `*`, `/`, `multiplied by`, `divided by` |
+| 6 | `-` (negation), `not`, `remainder of`, `square of`, `root of`, `sum of`, `product of`, `type of`, `capitalize` |
+| 7 | Literals, identifiers, `( expression )` |
+| 8 (highest) | `()`, `with`, `using` (function/method calls) |
+
+---
 
 ## Data Types
 
 | Type | Description |
 |------|-------------|
-| `number` | 64-bit floating point (f64) |
-| `string` | UTF-8 string |
-| `bool` | Boolean (`true`/`false`) |
+| `number` | 64-bit floating point |
+| `string` | UTF-8 text |
+| `bool` | `true` or `false` |
 | `null` | Null value |
-| `list` | Ordered collection of values |
-| `map` | Key-value store with string keys |
+| `list` | Ordered collection |
+| `map` | Key-value store (string keys) |
 | `function` | First-class function with closures |
 | `class` | Class definition |
 | `instance` | Object instance |
@@ -534,12 +659,12 @@ Reads a line from standard input as an expression.
 
 ## Truthiness
 
-| Value | Truthy? |
-|-------|---------|
-| `null` | false |
+| Value | Evaluates as |
+|-------|-------------|
+| `null` / `empty` | false |
 | `false` | false |
-| `0` (number) | false |
+| `0` | false |
 | `""` (empty string) | false |
 | `[]` (empty list) | false |
 | `{}` (empty map) | false |
-| All other values | true |
+| Everything else | true |

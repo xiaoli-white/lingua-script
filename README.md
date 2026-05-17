@@ -33,6 +33,8 @@ The binary will be at `target/release/lingua-script`.
 
 ## Language Guide
 
+See the full [Syntax Specification](docs/SYNTAX.md) for a complete reference of all language constructs.
+
 ### Basics
 
 ```linguascript
