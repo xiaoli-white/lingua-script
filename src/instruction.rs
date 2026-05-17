@@ -54,6 +54,9 @@ pub const OP_HALT: u8 = 52;
 pub const OP_RETURN_FRAME_AS_MAP: u8 = 53;
 pub const OP_FILTER_MAP: u8 = 54;
 pub const OP_MAKE_STD_MODULE: u8 = 55;
+pub const OP_INDEX_SET: u8 = 56;
+pub const OP_GET_FIELD: u8 = 57;
+pub const OP_SET_FIELD: u8 = 58;
 
 #[derive(Debug, Clone)]
 pub enum Instruction {
@@ -78,7 +81,7 @@ pub enum Instruction {
     LoadMethod(u32),
     MakeList(u32),
     MakeMap(u32),
-    IndexGet, ListLen, AddToList, RemoveFromList, MapToList,
+    IndexGet, IndexSet, ListLen, AddToList, RemoveFromList, MapToList,
     Say,
     Ask(u32),
     ReadFile(u32),
@@ -94,6 +97,8 @@ pub enum Instruction {
     ReturnFrameAsMap,
     FilterMap(Vec<u32>),
     MakeStdModule(u32),
+    GetField(u32),
+    SetField(u32),
 }
 
 impl Instruction {
@@ -133,6 +138,7 @@ impl Instruction {
             Instruction::MakeList(_) => OP_MAKE_LIST,
             Instruction::MakeMap(_) => OP_MAKE_MAP,
             Instruction::IndexGet => OP_INDEX_GET,
+            Instruction::IndexSet => OP_INDEX_SET,
             Instruction::ListLen => OP_LIST_LEN,
             Instruction::AddToList => OP_ADD_TO_LIST,
             Instruction::RemoveFromList => OP_REMOVE_FROM_LIST,
@@ -155,6 +161,8 @@ impl Instruction {
             Instruction::ReturnFrameAsMap => OP_RETURN_FRAME_AS_MAP,
             Instruction::FilterMap(_) => OP_FILTER_MAP,
             Instruction::MakeStdModule(_) => OP_MAKE_STD_MODULE,
+            Instruction::GetField(_) => OP_GET_FIELD,
+            Instruction::SetField(_) => OP_SET_FIELD,
         }
     }
 
@@ -210,6 +218,7 @@ impl Instruction {
             Instruction::MakeList(v) => { buf.push(OP_MAKE_LIST); push_u32(buf, *v); }
             Instruction::MakeMap(v) => { buf.push(OP_MAKE_MAP); push_u32(buf, *v); }
             Instruction::IndexGet => buf.push(OP_INDEX_GET),
+            Instruction::IndexSet => buf.push(OP_INDEX_SET),
             Instruction::ListLen => buf.push(OP_LIST_LEN),
             Instruction::AddToList => buf.push(OP_ADD_TO_LIST),
             Instruction::RemoveFromList => buf.push(OP_REMOVE_FROM_LIST),
@@ -239,6 +248,8 @@ impl Instruction {
                 buf.push(OP_MAKE_STD_MODULE);
                 push_u32(buf, *idx);
             }
+            Instruction::GetField(idx) => { buf.push(OP_GET_FIELD); push_u32(buf, *idx); }
+            Instruction::SetField(idx) => { buf.push(OP_SET_FIELD); push_u32(buf, *idx); }
         }
     }
 
@@ -306,6 +317,7 @@ impl Instruction {
             OP_MAKE_LIST => Instruction::MakeList(read_u32(data, offset)),
             OP_MAKE_MAP => Instruction::MakeMap(read_u32(data, offset)),
             OP_INDEX_GET => Instruction::IndexGet,
+            OP_INDEX_SET => Instruction::IndexSet,
             OP_LIST_LEN => Instruction::ListLen,
             OP_ADD_TO_LIST => Instruction::AddToList,
             OP_REMOVE_FROM_LIST => Instruction::RemoveFromList,
@@ -333,6 +345,8 @@ impl Instruction {
                 Instruction::FilterMap(keys)
             }
             OP_MAKE_STD_MODULE => Instruction::MakeStdModule(read_u32(data, offset)),
+            OP_GET_FIELD => Instruction::GetField(read_u32(data, offset)),
+            OP_SET_FIELD => Instruction::SetField(read_u32(data, offset)),
             _ => panic!("unknown opcode {}", op),
         }
     }

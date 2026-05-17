@@ -266,6 +266,11 @@ impl Compiler {
                 self.compile_expr(index);
                 self.emit(Instruction::IndexGet);
             }
+            Expr::MemberAccess { object, member } => {
+                self.compile_expr(object);
+                let idx = self.s(member);
+                self.emit(Instruction::GetField(idx));
+            }
             Expr::ModulePath(parts) => {
                 let resolved = self.resolve_module_path(parts);
                 let storage_key = module_var_name(&resolved);
@@ -287,6 +292,18 @@ impl Compiler {
                 self.compile_expr(value);
                 let idx = self.s(name);
                 self.emit(Instruction::StoreVar(idx));
+            }
+            Stmt::IndexAssign { object, index, value } => {
+                self.compile_expr(object);
+                self.compile_expr(index);
+                self.compile_expr(value);
+                self.emit(Instruction::IndexSet);
+            }
+            Stmt::MemberAssign { object, member, value } => {
+                self.compile_expr(object);
+                self.compile_expr(value);
+                let idx = self.s(member);
+                self.emit(Instruction::SetField(idx));
             }
             Stmt::Say(expr) => { self.compile_expr(expr); self.emit(Instruction::Say); }
             Stmt::Ask { prompt, var } => {

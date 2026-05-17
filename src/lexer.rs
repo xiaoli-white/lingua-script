@@ -30,6 +30,7 @@ pub enum Token {
     Capitalize, Extends, Leave, Skip,
     Interface, Can, Implements,
     Super,
+    At, Accessed, Assigned,
     Number(f64),
     String(String),
     Identifier(String),
@@ -262,6 +263,9 @@ impl Lexer {
             "can" => Can,
             "implements" => Implements,
             "super" => Super,
+            "at" => At,
+            "accessed" => Accessed,
+            "assigned" => Assigned,
             _ => return None,
         })
     }

@@ -72,7 +72,7 @@ LinguaScript is a narrative-style programming language designed to read like nat
 ### Keywords
 
 ```
-a, added, an, and, ask, attempt, be, becomes, beware, by, can, capitalize,
+a, accessed, added, an, and, ask, assigned, attempt, at, be, becomes, beware, by, can, capitalize,
 case, chapter, containing, convert, create, define, destroy, divided, each,
 empty, end, equal, execute, exit, extends, fails, false, for, fresh, from,
 greater, has, here, if, implements, in, incase, instantiate, interface,
@@ -559,15 +559,22 @@ convert 42 to string and save to s.
 
 **Create a list:**
 ```
-let name be a list containing item1 and item2 and ...
+let name be a list containing item1, item2, ...
 ```
-Example: `let fruits be a list containing "apple" and "banana".`
+Example: `let fruits be a list containing "apple", "banana".`
+Also supports `and`: `let fruits be a list containing "apple" and "banana".`
 
 **Access an element:**
 ```
-list_name[index]
+list at index
 ```
-Example: `say fruits[0].` / `let first be fruits[zero].`
+Example: `say fruits at 0.` / `let first be fruits at zero.`
+
+**Assign an element:**
+```
+list at index becomes value.
+```
+Example: `fruits at 0 becomes "orange".`
 
 **Add an element:**
 ```
@@ -587,20 +594,138 @@ Example: `remove "banana" from fruits.`
 
 **Create a map:**
 ```
-let name be a map with "key1" as value1 and "key2" as value2 and ...
+let name be a map with "key1" as value1, "key2" as value2, ...
 ```
-Keys can be strings or identifiers.
+Keys can be strings or identifiers. Also supports `and`.
 
 **Example:**
 ```
-let cfg be a map with "volume" as 80 and "difficulty" as "Hard".
+let cfg be a map with "volume" as 80, "difficulty" as "Hard".
 ```
 
 **Access a value:**
 ```
-map_name[key]
+map at key
 ```
-Example: `say cfg["volume"].` / `let vol be cfg["volume"].`
+Example: `say cfg at "volume".` / `let vol be cfg at "volume".`
+
+**Assign a value:**
+```
+map at key becomes value.
+```
+Example: `cfg at "volume" becomes 100.`
+
+---
+
+### Object Member Access
+
+**Access a member:**
+```
+member of object
+```
+Example: `say name of player.` / `let hp be hp of player.`
+
+**Assign a member:**
+```
+member of object becomes value.
+```
+Example: `hp of player becomes 50.`
+
+If the object defines `when accessed with key:` or `when assigned with key, value:`, those methods are called instead of direct field access.
+
+---
+
+### Index and Member Operator Overloading
+
+Custom objects can behave like lists or maps by defining special `when` methods inside a class:
+
+| Operation | Class Definition | Internal Method |
+|-----------|-----------------|-----------------|
+| `obj at index` read | `when accessed at with index:` | `accessed_at` |
+| `obj at index` write | `when assigned at with index, value:` | `assigned_at` |
+| `member of obj` read | `when accessed with key:` | `accessed` |
+| `member of obj` write | `when assigned with key, value:` | `assigned` |
+
+**Example — custom vector with index access:**
+```linguascript
+define a Vector:
+    it has x which is 0.
+    it has y which is 0.
+    it has z which is 0.
+
+    on create with vx, vy, vz:
+        x becomes vx.
+        y becomes vy.
+        z becomes vz.
+    end.
+
+    when accessed at with index:
+        when index is equal to 0:
+            return x.
+        end.
+        when index is equal to 1:
+            return y.
+        end.
+        when index is equal to 2:
+            return z.
+        end.
+        raise "index out of range".
+    end.
+
+    when assigned at with index, value:
+        when index is equal to 0:
+            x becomes value.
+        end.
+        when index is equal to 1:
+            y becomes value.
+        end.
+        when index is equal to 2:
+            z becomes value.
+        end.
+    end.
+
+    make accessed_at public.
+    make assigned_at public.
+end.
+
+let v be instantiate Vector with 1, 2, 3.
+say v at 0.          // 1
+say v at 1.          // 2
+v at 0 becomes 10.
+say v at 0.          // 10
+```
+
+**Example — dynamic object with member access:**
+```linguascript
+define a DynamicObject:
+    it has storage which is a map with "name" as "default".
+
+    when accessed with key:
+        return storage at key.
+    end.
+
+    when assigned with key, value:
+        storage at key becomes value.
+    end.
+
+    make accessed public.
+    make assigned public.
+end.
+
+let obj be instantiate DynamicObject.
+say name of obj.             // "default"
+name of obj becomes "Alice".
+say name of obj.             // "Alice"
+```
+
+### Fallback Behavior
+
+| Operation | With Overload | Without Overload |
+|-----------|--------------|-----------------|
+| `obj at index` read | calls `accessed_at` | list/map normal indexing, instance returns null |
+| `obj at index becomes val` | calls `assigned_at` | list/map normal assignment, instance no-op |
+| `member of obj` read | calls `accessed` | falls back to `it has` field read |
+| `member of obj becomes val` | calls `assigned` | falls back to `it has` field write |
 
 ---
 
@@ -671,32 +796,55 @@ note that any text here is ignored.
 
 ### Indexing
 
-Access list or map elements using bracket notation:
+Access list or map elements using the `at` keyword:
 ```
-collection[index]
+collection at index
 ```
 
 **List indexing:**
 ```
-let items be a list containing "a" and "b" and "c".
-say items[0].        // "a"
+let items be a list containing "a", "b", "c".
+say items at 0.        // "a"
 let i be one.
-say items[i].        // "b"
+say items at i.        // "b"
 ```
 
 **Map indexing:**
 ```
-let cfg be a map with "volume" as 80 and "name" as "test".
-say cfg["volume"].   // 80
+let cfg be a map with "volume" as 80, "name" as "test".
+say cfg at "volume".   // 80
 let key be "name".
-say cfg[key].        // "test"
+say cfg at key.        // "test"
 ```
 
 Index expressions can be used in any context where a value is expected:
 ```
-let x be items[0] added to items[1].
-cfg["count"] becomes 100.
+let x be items at 0 added to items at 1.
+cfg at "count" becomes 100.
 ```
+
+### Member Access
+
+Access object members using the `of` keyword:
+```
+member of object
+```
+
+**Example:**
+```
+define a Player:
+    it has name which is "Hero".
+    it has hp which is 100.
+    make name public.
+    make hp public.
+end.
+
+let p be instantiate Player with "Arthur".
+say name of p.         // "Arthur"
+hp of p becomes 50.
+```
+
+Member access falls back to `it has` field read/write if the object does not define `when accessed with key:` or `when assigned with key, value:`.
 
 ---
 

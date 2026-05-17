@@ -27,6 +27,10 @@ pub enum Expr {
         object: Box<Expr>,
         index: Box<Expr>,
     },
+    MemberAccess {
+        object: Box<Expr>,
+        member: String,
+    },
     ListLiteral(Vec<Expr>),
     MapLiteral(Vec<(String, Expr)>),
     TypeOf(Box<Expr>),
@@ -63,6 +67,16 @@ pub enum Stmt {
     Assign {
         name: String,
         value: Expr,
+    },
+    IndexAssign {
+        object: Box<Expr>,
+        index: Box<Expr>,
+        value: Box<Expr>,
+    },
+    MemberAssign {
+        object: Box<Expr>,
+        member: String,
+        value: Box<Expr>,
     },
     Say(Expr),
     Ask {

@@ -89,7 +89,7 @@ impl Parser {
             Token::As |
             Token::Capitalize | Token::Extends |
             Token::Interface | Token::Can | Token::Implements |
-            Token::Super | Token::Leave | Token::Skip)
+            Token::Super | Token::Leave | Token::Skip | Token::At | Token::Accessed | Token::Assigned)
     }
 
     #[allow(dead_code)]
@@ -168,6 +168,21 @@ impl Parser {
                     }
                 }
                 let expr = self.parse_expr();
+                if self.peek() == &Token::Becomes {
+                    match expr {
+                        Expr::Index { object, index } => {
+                            self.advance();
+                            let value = self.parse_expr();
+                            return Stmt::IndexAssign { object, index, value: Box::new(value) };
+                        }
+                        Expr::MemberAccess { object, member } => {
+                            self.advance();
+                            let value = self.parse_expr();
+                            return Stmt::MemberAssign { object, member, value: Box::new(value) };
+                        }
+                        _ => {}
+                    }
+                }
                 if let Expr::Identifier(_) = &expr {
                     if self.peek() == &Token::Dot && self.peek_ahead(1) != &Token::Dot {
                         self.advance();
@@ -580,6 +595,21 @@ impl Parser {
                         self.expect_peek(&Token::RParen);
                         expr = Expr::Call { callee: Box::new(expr), args };
                     }
+                    Token::At => {
+                        self.advance();
+                        let index = self.parse_unary();
+                        expr = Expr::Index { object: Box::new(expr), index: Box::new(index) };
+                    }
+                    Token::Of => {
+                        if let Expr::Identifier(ref m) = expr {
+                            let member = m.clone();
+                            self.advance();
+                            let object = self.parse_unary();
+                            expr = Expr::MemberAccess { object: Box::new(object), member };
+                        } else {
+                            break;
+                        }
+                    }
                     _ => break,
                 }
             }
@@ -776,7 +806,11 @@ impl Parser {
         loop {
             if matches!(self.peek(), Token::Dot | Token::EOF) { break; }
             items.push(self.parse_comparison());
-            if !self.expect_peek(&Token::And) { break; }
+            if self.peek() == &Token::Comma {
+                self.advance();
+            } else if !self.expect_peek(&Token::And) {
+                break;
+            }
         }
         Expr::ListLiteral(items)
     }
@@ -795,7 +829,11 @@ impl Parser {
             self.expect_peek(&Token::As);
             let value = self.parse_comparison();
             pairs.push((key, value));
-            if !self.expect_peek(&Token::And) { break; }
+            if self.peek() == &Token::Comma {
+                self.advance();
+            } else if !self.expect_peek(&Token::And) {
+                break;
+            }
         }
         Expr::MapLiteral(pairs)
     }
@@ -813,7 +851,13 @@ impl Parser {
                     }
                     Expr::ModulePath(parts)
                 } else {
-                    Expr::Identifier(name)
+                    let mut expr = Expr::Identifier(name);
+                    while self.peek() == &Token::At {
+                        self.advance();
+                        let index = self.parse_unary();
+                        expr = Expr::Index { object: Box::new(expr), index: Box::new(index) };
+                    }
+                    expr
                 }
             }
             _ => self.parse_primary(),
@@ -826,6 +870,13 @@ impl Parser {
             match self.peek() {
                 Token::Identifier(n) => {
                     params.push(n.clone());
+                    self.advance();
+                    if self.peek() == &Token::Comma {
+                        self.advance();
+                    } else { break; }
+                }
+                t if Parser::token_to_name(t).is_some() => {
+                    params.push(Parser::token_to_name(t).unwrap());
                     self.advance();
                     if self.peek() == &Token::Comma {
                         self.advance();
@@ -1177,6 +1228,11 @@ impl Parser {
                             }
                             break;
                         }
+                        Token::At => {
+                            self.advance();
+                            let index = self.parse_unary();
+                            expr = Expr::Index { object: Box::new(expr), index: Box::new(index) };
+                        }
                         _ => break,
                     }
                 }
@@ -1224,6 +1280,21 @@ impl Parser {
                                 }
                                 self.expect_peek(&Token::RParen);
                                 expr = Expr::Call { callee: Box::new(expr), args };
+                            }
+                            Token::At => {
+                                self.advance();
+                                let index = self.parse_unary();
+                                expr = Expr::Index { object: Box::new(expr), index: Box::new(index) };
+                            }
+                            Token::Of => {
+                                if let Expr::Identifier(ref m) = expr {
+                                    let member = m.clone();
+                                    self.advance();
+                                    let object = self.parse_unary();
+                                    expr = Expr::MemberAccess { object: Box::new(object), member };
+                                } else {
+                                    break;
+                                }
                             }
                             _ => break,
                         }
@@ -1334,6 +1405,21 @@ impl Parser {
                             }
                             break;
                         }
+                        Token::At => {
+                            self.advance();
+                            let index = self.parse_unary();
+                            expr = Expr::Index { object: Box::new(expr), index: Box::new(index) };
+                        }
+                        Token::Of => {
+                            if let Expr::Identifier(ref m) = expr {
+                                let member = m.clone();
+                                self.advance();
+                                let object = self.parse_unary();
+                                expr = Expr::MemberAccess { object: Box::new(object), member };
+                            } else {
+                                break;
+                            }
+                        }
                         _ => break,
                     }
                 }
@@ -1426,6 +1512,9 @@ impl Parser {
             Can => "can".into(),
             Implements => "implements".into(),
             Super => "super".into(),
+            At => "at".into(),
+            Accessed => "accessed".into(),
+            Assigned => "assigned".into(),
             With => "with".into(),
             From => "from".into(),
             When => "when".into(),

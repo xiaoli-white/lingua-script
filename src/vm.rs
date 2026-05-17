@@ -412,13 +412,9 @@ impl VM {
                 self.push(val);
             }
             Instruction::StoreVar(idx) => {
-                let name = self.str_val(idx);
                 let val = self.pop();
-                if self.call_stack.is_empty() {
-                    self.set_global(&name, val);
-                } else {
-                    self.set_var(&name, val);
-                }
+                let name = self.str_val(idx);
+                self.set_var(&name, val);
             }
             Instruction::LoadLocal(idx) => {
                 if let Some(frame) = self.call_stack.last() {
@@ -960,8 +956,8 @@ impl VM {
                 self.push(Value::Map(Gc::new(map)));
             }
             Instruction::IndexGet => {
-                let collection = self.pop();
                 let index = self.pop();
+                let collection = self.pop();
                 match collection {
                     Value::List(items) => match index {
                         Value::Number(n) => {
@@ -976,7 +972,73 @@ impl VM {
                         let key = index.to_string();
                         self.push(map.borrow().get(&key).cloned().unwrap_or(Value::Null));
                     }
+                    Value::SharedInstance(data) => {
+                        if !self.dispatch_operator("accessed_at", Value::SharedInstance(data), vec![index])? {
+                            self.push(Value::Null);
+                        }
+                    }
                     _ => self.push(Value::Null),
+                }
+            }
+            Instruction::IndexSet => {
+                let value = self.pop();
+                let index = self.pop();
+                let collection = self.pop();
+                match collection {
+                    Value::List(items) => match index {
+                        Value::Number(n) => {
+                            let i = n as usize;
+                            let mut items = items.borrow_mut();
+                            if i < items.len() {
+                                items[i] = value;
+                            }
+                        }
+                        _ => {}
+                    },
+                    Value::Map(map) => {
+                        let key = index.to_string();
+                        map.borrow_mut().insert(key, value);
+                    }
+                    Value::SharedInstance(data) => {
+                        self.dispatch_operator("assigned_at", Value::SharedInstance(data), vec![index, value])?;
+                    }
+                    _ => {}
+                }
+            }
+            Instruction::GetField(idx) => {
+                let object = self.pop();
+                let member = self.str_val(idx);
+                match object {
+                    Value::SharedInstance(data) => {
+                        let d = data.borrow();
+                        if let Some(val) = d.fields.get(&member) {
+                            self.push(val.clone());
+                        } else {
+                            drop(d);
+                            if !self.dispatch_operator("accessed", Value::SharedInstance(data), vec![Value::String(member.clone())])? {
+                                self.push(Value::Null);
+                            }
+                        }
+                    }
+                    _ => self.push(Value::Null),
+                }
+            }
+            Instruction::SetField(idx) => {
+                let value = self.pop();
+                let object = self.pop();
+                let member = self.str_val(idx);
+                match object {
+                    Value::SharedInstance(data) => {
+                        let d = data.borrow();
+                        if d.fields.contains_key(&member) {
+                            drop(d);
+                            data.borrow_mut().fields.insert(member, value);
+                        } else {
+                            drop(d);
+                            self.dispatch_operator("assigned", Value::SharedInstance(data), vec![Value::String(member), value])?;
+                        }
+                    }
+                    _ => {}
                 }
             }
             Instruction::MapToList => {

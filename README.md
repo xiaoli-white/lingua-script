@@ -153,6 +153,8 @@ end.
 
 ```linguascript
 let fruits be a list containing "apple", "banana".
+say fruits at 0.              // "apple"
+fruits at 0 becomes "orange".
 add "cherry" to fruits.
 remove "apple" from fruits.
 say fruits.
@@ -162,7 +164,24 @@ say fruits.
 
 ```linguascript
 let config be a map with "volume" as 80, "difficulty" as "Hard".
+say config at "volume".       // 80
+config at "volume" becomes 100.
 say config.
+```
+
+### Object Member Access
+
+```linguascript
+define a Player:
+    it has name which is "Hero".
+    it has hp which is 100.
+    make name public.
+    make hp public.
+end.
+
+let p be instantiate Player with "Arthur".
+say name of p.                // "Arthur"
+hp of p becomes 50.
 ```
 
 ### Type Query and Conversion
@@ -303,6 +322,10 @@ Method names support multi-word identifiers (joined with `_`):
 | `when less than`       | `less_than`              |
 | `when greater than or equal to` | `greater_than_or_equal_to` |
 | `when less than or equal to`    | `less_than_or_equal_to`  |
+| `when accessed at`     | `accessed_at`            |
+| `when assigned at`     | `assigned_at`            |
+| `when accessed`        | `accessed`               |
+| `when assigned`        | `assigned`               |
 
 ### Exception Handling
 
