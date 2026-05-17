@@ -703,6 +703,9 @@ impl VM {
                                         self.code = m.code.clone();
                                         self.ip = 0;
                                         self.vars = new_vars;
+                                    } else if let Some(field_val) = d.fields.get(&name) {
+                                        for _ in 0..=argc { self.pop(); }
+                                        self.push(field_val.clone());
                                     } else {
                                         return Err(format!("method {} not found on {}", name, class_name));
                                     }
@@ -759,6 +762,45 @@ impl VM {
                                     } else {
                                         return Err(format!("method {} not found in module", name));
                                     }
+                                }
+                                Value::NativeFunc(f) => {
+                                    let mut args = Vec::new();
+                                    for i in 0..argc - 1 {
+                                        let arg_idx = obj_idx + 1 + i;
+                                        args.push(self.stack[arg_idx].clone());
+                                    }
+                                    for _ in 0..=argc { self.pop(); }
+                                    match f(&args) {
+                                        Ok(result) => self.push(result),
+                                        Err(e) => return Err(e),
+                                    }
+                                }
+                                Value::Func { name: _, code, params, captures } => {
+                                    let mut new_vars = HashMap::new();
+                                    for cap in captures.iter() {
+                                        new_vars.insert(cap.clone(), self.var(cap));
+                                    }
+                                    let num_real_args = argc - 1;
+                                    for (i, param) in params.iter().enumerate() {
+                                        if i < num_real_args {
+                                            let arg_idx = obj_idx + 1 + i;
+                                            let arg_val = self.stack[arg_idx].clone();
+                                            new_vars.insert(param.clone(), arg_val);
+                                        }
+                                    }
+                                    for _ in 0..=argc { self.pop(); }
+                                    let frame = Frame {
+                                        ip: self.ip,
+                                        code: self.code.clone(),
+                                        vars: self.vars.clone(),
+                                        stack_depth: self.stack.len(),
+                                        try_stack_depth: self.try_stack.len(),
+                                        pending_instance: self.pending_instance.take(),
+                                    };
+                                    self.call_stack.push(frame);
+                                    self.code = code.clone();
+                                    self.ip = 0;
+                                    self.vars = new_vars;
                                 }
                                 _ => return Err(format!("cannot call method on non-instance")),
                             }

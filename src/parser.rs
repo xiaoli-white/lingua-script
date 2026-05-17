@@ -77,6 +77,7 @@ impl Parser {
             Token::Raise | Token::Return | Token::Run | Token::Execute |
             Token::Convert | Token::Type |
             Token::Added | Token::Subtracted | Token::Multiplied | Token::Divided |
+            Token::Plus | Token::Minus |
             Token::Remainder | Token::Square | Token::Root | Token::The |
             Token::Sum | Token::Product |
             Token::Not | Token::Or |
@@ -96,7 +97,7 @@ impl Parser {
         matches!(t,
             Token::Number(_) | Token::String(_) |
             Token::Identifier(_) |
-            Token::LParen | Token::Minus |
+            Token::LParen | Token::Minus | Token::Plus |
             Token::Not | Token::Square | Token::Root | Token::The |
             Token::Sum | Token::Product | Token::Remainder |
             Token::Type | Token::Convert |
@@ -549,13 +550,57 @@ impl Parser {
 
     fn parse_func_call_stmt(&mut self) -> Stmt {
         self.advance();
-        let func = self.parse_expr();
+        let func = if matches!(self.peek(), Token::Identifier(_) | Token::Super) {
+            let tok = self.advance().clone();
+            let mut expr = match tok {
+                Token::Identifier(n) => Expr::Identifier(n),
+                Token::Super => Expr::Identifier("super".to_string()),
+                _ => unreachable!(),
+            };
+            loop {
+                match self.peek() {
+                    Token::LParen => {
+                        self.advance();
+                        let mut args = Vec::new();
+                        if self.peek() != &Token::RParen {
+                            loop {
+                                args.push(self.parse_expr());
+                                if self.peek() != &Token::Comma { break; }
+                                self.advance();
+                            }
+                        }
+                        self.expect_peek(&Token::RParen);
+                        expr = Expr::Call { callee: Box::new(expr), args };
+                    }
+                    _ => break,
+                }
+            }
+            expr
+        } else {
+            self.parse_expr()
+        };
         let mut args = Vec::new();
         if self.expect_peek(&Token::With) {
             loop {
                 args.push(self.parse_expr());
                 if self.peek() != &Token::Comma { break; }
                 self.advance();
+            }
+        }
+        let mut func_expr = Expr::Call { callee: Box::new(func), args };
+        if self.peek() == &Token::Using || self.peek() == &Token::UsingCall {
+            self.advance();
+            let object = self.parse_using_object();
+            if let Expr::Call { callee, args } = func_expr {
+                if let Expr::Identifier(mname) = callee.as_ref() {
+                    func_expr = Expr::MethodCall {
+                        object: Box::new(object),
+                        method: mname.clone(),
+                        args,
+                    };
+                } else {
+                    func_expr = Expr::Call { callee, args };
+                }
             }
         }
         let mut result_var = None;
@@ -566,7 +611,7 @@ impl Parser {
                 result_var = Some(n.clone());
             }
         }
-        Stmt::FuncCall { func, args, result_var }
+        Stmt::FuncCall { func: func_expr, args: Vec::new(), result_var }
     }
 
     fn parse_if_fails(&mut self) -> Stmt {
@@ -723,7 +768,7 @@ impl Parser {
         loop {
             if matches!(self.peek(), Token::Dot | Token::EOF) { break; }
             items.push(self.parse_expr());
-            if !self.expect_peek(&Token::Comma) { break; }
+            if !self.expect_peek(&Token::And) { break; }
         }
         Expr::ListLiteral(items)
     }
@@ -742,7 +787,7 @@ impl Parser {
             self.expect_peek(&Token::As);
             let value = self.parse_expr();
             pairs.push((key, value));
-            if !self.expect_peek(&Token::Comma) { break; }
+            if !self.expect_peek(&Token::And) { break; }
         }
         Expr::MapLiteral(pairs)
     }
@@ -818,6 +863,9 @@ impl Parser {
         let mut left = self.parse_comparison();
         while self.peek() == &Token::And {
             if self.peek_ahead(1) == &Token::Save {
+                break;
+            }
+            if matches!(self.peek_ahead(1), Token::Instantiate | Token::Fresh | Token::Let | Token::Say | Token::When | Token::For | Token::While | Token::Repeat | Token::Return | Token::Stop | Token::Exit | Token::Raise | Token::Run | Token::Execute | Token::Convert | Token::Add | Token::Remove | Token::Make | Token::Define | Token::Note | Token::Beware | Token::Attempt | Token::Refer | Token::Chapter | Token::Read | Token::Write | Token::Ask) {
                 break;
             }
             self.advance();
@@ -1139,6 +1187,7 @@ impl Parser {
                 let mut args = Vec::new();
                 if self.expect_peek(&Token::With) {
                     loop {
+                        if matches!(self.peek(), Token::And | Token::Dot | Token::EOF) { break; }
                         args.push(self.parse_expr());
                         if !self.expect_peek(&Token::Comma) { break; }
                     }
@@ -1147,6 +1196,69 @@ impl Parser {
                     callee: Box::new(Expr::Identifier(format!("__instantiate__{}", class_name))),
                     args,
                 }
+            }
+            Token::Run | Token::Execute => {
+                self.advance();
+                let func = if matches!(self.peek(), Token::Identifier(_) | Token::Super) {
+                    let tok = self.advance().clone();
+                    let mut expr = match tok {
+                        Token::Identifier(n) => Expr::Identifier(n),
+                        Token::Super => Expr::Identifier("super".to_string()),
+                        _ => unreachable!(),
+                    };
+                    loop {
+                        match self.peek() {
+                            Token::LParen => {
+                                self.advance();
+                                let mut args = Vec::new();
+                                if self.peek() != &Token::RParen {
+                                    loop {
+                                        args.push(self.parse_expr());
+                                        if self.peek() != &Token::Comma { break; }
+                                        self.advance();
+                                    }
+                                }
+                                self.expect_peek(&Token::RParen);
+                                expr = Expr::Call { callee: Box::new(expr), args };
+                            }
+                            _ => break,
+                        }
+                    }
+                    expr
+                } else {
+                    self.parse_expr()
+                };
+                let mut args = Vec::new();
+                if self.expect_peek(&Token::With) {
+                    loop {
+                        args.push(self.parse_expr());
+                        if self.peek() != &Token::Comma { break; }
+                        self.advance();
+                    }
+                }
+                let mut expr = Expr::Call { callee: Box::new(func), args };
+                if self.peek() == &Token::Using || self.peek() == &Token::UsingCall {
+                    self.advance();
+                    let object = self.parse_using_object();
+                    if let Expr::Call { callee, args } = expr {
+                        if let Expr::Identifier(mname) = callee.as_ref() {
+                            expr = Expr::MethodCall {
+                                object: Box::new(object),
+                                method: mname.clone(),
+                                args,
+                            };
+                        } else {
+                            expr = Expr::Call { callee, args };
+                        }
+                    }
+                }
+                if self.peek() == &Token::And && self.peek_ahead(1) == &Token::Save {
+                    self.advance();
+                    self.advance();
+                    self.advance();
+                    self.advance();
+                }
+                expr
             }
             Token::LParen => {
                 self.advance();
@@ -1232,6 +1344,7 @@ impl Parser {
                 let mut args = Vec::new();
                 if self.expect_peek(&Token::With) {
                     loop {
+                        if matches!(self.peek(), Token::And | Token::Dot | Token::EOF) { break; }
                         args.push(self.parse_expr());
                         if self.peek() != &Token::Comma { break; }
                         self.advance();

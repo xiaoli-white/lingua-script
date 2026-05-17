@@ -245,6 +245,7 @@ impl Lexer {
             "convert" => Convert, "type" => Type,
             "added" => Added, "subtracted" => Subtracted,
             "multiplied" => Multiplied, "divided" => Divided,
+            "plus" => Plus, "minus" => Minus,
             "remainder" => Remainder, "square" => Square,
             "root" => Root, "sum" => Sum, "product" => Product,
             "not" => Not, "or" => Or, "as" => As,

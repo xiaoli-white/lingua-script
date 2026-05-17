@@ -471,7 +471,7 @@ impl Compiler {
                 self.emit(Instruction::StoreVar(n_idx));
             }
             Stmt::FuncCall { func, args, result_var } => {
-                if let Expr::Call { .. } = func {
+                if let Expr::Call { .. } | Expr::MethodCall { .. } = func {
                     self.compile_expr(func);
                 } else {
                     for arg in args { self.compile_expr(arg); }
@@ -917,8 +917,14 @@ impl Compiler {
         let has_start = program.stmts.iter().any(|s| matches!(s, Stmt::StartHere(_)));
         if has_start {
             for stmt in &program.stmts {
-                if let Stmt::StartHere(body) = stmt {
-                    for s in body { self.compile_stmt(s); }
+                match stmt {
+                    Stmt::ClassDef { .. } | Stmt::InterfaceDef { .. } | Stmt::Refer { .. } | Stmt::Chapter { .. } => {
+                        self.compile_stmt(stmt);
+                    }
+                    Stmt::StartHere(body) => {
+                        for s in body { self.compile_stmt(s); }
+                    }
+                    _ => {}
                 }
             }
         } else {
