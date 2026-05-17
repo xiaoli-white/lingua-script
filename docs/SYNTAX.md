@@ -559,9 +559,15 @@ convert 42 to string and save to s.
 
 **Create a list:**
 ```
-let name be a list containing item1, item2, ...
+let name be a list containing item1 and item2 and ...
 ```
-Example: `let fruits be a list containing "apple", "banana".`
+Example: `let fruits be a list containing "apple" and "banana".`
+
+**Access an element:**
+```
+list_name[index]
+```
+Example: `say fruits[0].` / `let first be fruits[zero].`
 
 **Add an element:**
 ```
@@ -581,14 +587,20 @@ Example: `remove "banana" from fruits.`
 
 **Create a map:**
 ```
-let name be a map with "key1" as value1, "key2" as value2, ...
+let name be a map with "key1" as value1 and "key2" as value2 and ...
 ```
 Keys can be strings or identifiers.
 
 **Example:**
 ```
-let cfg be a map with "volume" as 80, "difficulty" as "Hard".
+let cfg be a map with "volume" as 80 and "difficulty" as "Hard".
 ```
+
+**Access a value:**
+```
+map_name[key]
+```
+Example: `say cfg["volume"].` / `let vol be cfg["volume"].`
 
 ---
 
@@ -659,9 +671,31 @@ note that any text here is ignored.
 
 ### Indexing
 
-Access list or map elements:
+Access list or map elements using bracket notation:
 ```
 collection[index]
+```
+
+**List indexing:**
+```
+let items be a list containing "a" and "b" and "c".
+say items[0].        // "a"
+let i be one.
+say items[i].        // "b"
+```
+
+**Map indexing:**
+```
+let cfg be a map with "volume" as 80 and "name" as "test".
+say cfg["volume"].   // 80
+let key be "name".
+say cfg[key].        // "test"
+```
+
+Index expressions can be used in any context where a value is expected:
+```
+let x be items[0] added to items[1].
+cfg["count"] becomes 100.
 ```
 
 ---
