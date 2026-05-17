@@ -87,9 +87,9 @@ impl Parser {
             Token::List | Token::Containing | Token::Map |
             Token::Add | Token::Remove |
             Token::As |
-            Token::Capitalize | Token::Extends | Token::Input |
+            Token::Capitalize | Token::Extends |
             Token::Interface | Token::Can | Token::Implements |
-            Token::Super)
+            Token::Super | Token::Leave | Token::Skip)
     }
 
     #[allow(dead_code)]
@@ -103,7 +103,7 @@ impl Parser {
             Token::Type | Token::Convert |
             Token::Null | Token::Empty |
             Token::Instantiate | Token::Fresh |
-            Token::Capitalize | Token::Input)
+            Token::Capitalize)
     }
 
     pub fn parse_program(&mut self) -> Program {
@@ -136,6 +136,8 @@ impl Parser {
             Token::While => self.parse_while(),
             Token::Start => self.parse_start(),
             Token::Stop => { self.advance(); Stmt::Stop }
+            Token::Leave => { self.advance(); Stmt::Leave }
+            Token::Skip => { self.advance(); Stmt::Skip }
             Token::Exit => self.parse_exit(),
             Token::Say => self.parse_say(),
             Token::Ask => self.parse_ask(),
@@ -283,11 +285,17 @@ impl Parser {
 
     fn parse_ask(&mut self) -> Stmt {
         self.advance();
-        let prompt = self.parse_expr();
-        self.expect_peek(&Token::And);
-        self.expect_peek(&Token::Save);
-        self.expect_peek(&Token::To);
-        let var = self.expect_identifier();
+        let mut prompt = None;
+        let mut var = None;
+        if self.peek() != &Token::And && self.peek() != &Token::Dot {
+            prompt = Some(self.parse_expr());
+        }
+        if self.peek() == &Token::And {
+            self.advance();
+            self.expect_peek(&Token::Save);
+            self.expect_peek(&Token::To);
+            var = Some(self.expect_identifier());
+        }
         Stmt::Ask { prompt, var }
     }
 
@@ -767,7 +775,7 @@ impl Parser {
         let mut items = Vec::new();
         loop {
             if matches!(self.peek(), Token::Dot | Token::EOF) { break; }
-            items.push(self.parse_expr());
+            items.push(self.parse_comparison());
             if !self.expect_peek(&Token::And) { break; }
         }
         Expr::ListLiteral(items)
@@ -785,7 +793,7 @@ impl Parser {
                 _ => break,
             };
             self.expect_peek(&Token::As);
-            let value = self.parse_expr();
+            let value = self.parse_comparison();
             pairs.push((key, value));
             if !self.expect_peek(&Token::And) { break; }
         }
@@ -1100,10 +1108,6 @@ impl Parser {
                     _ => Expr::Identifier("a".to_string()),
                 }
             }
-            Token::Input => {
-                self.advance();
-                Expr::Input
-            }
             Token::Super => {
                 self.advance();
                 if self.peek() == &Token::Of {
@@ -1416,7 +1420,8 @@ impl Parser {
             To => "to".into(),
             Capitalize => "capitalize".into(),
             Extends => "extends".into(),
-            Input => "input".into(),
+            Leave => "leave".into(),
+            Skip => "skip".into(),
             Interface => "interface".into(),
             Can => "can".into(),
             Implements => "implements".into(),

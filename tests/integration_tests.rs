@@ -893,3 +893,145 @@ end.
     )
     .is_ok());
 }
+
+#[test]
+fn test_leave_while_loop() {
+    assert!(execute(
+        r#"
+let i be zero.
+while i is less than ten:
+    when i is equal to five:
+        leave.
+    end.
+    say i.
+    i becomes i added to one.
+end.
+"#
+    )
+    .is_ok());
+}
+
+#[test]
+fn test_leave_for_each_loop() {
+    assert!(execute(
+        r#"
+let items be a list containing "a", "b", "c", "d".
+for each item in items:
+    when item is equal to "c":
+        leave.
+    end.
+    say item.
+end.
+"#
+    )
+    .is_ok());
+}
+
+#[test]
+fn test_skip_for_each_loop() {
+    assert!(execute(
+        r#"
+let items be a list containing "a", "b", "c", "d".
+for each item in items:
+    when item is equal to "b":
+        skip.
+    end.
+    say item.
+end.
+"#
+    )
+    .is_ok());
+}
+
+#[test]
+fn test_skip_while_loop() {
+    assert!(execute(
+        r#"
+let i be zero.
+while i is less than five:
+    i becomes i added to one.
+    when i is equal to three:
+        skip.
+    end.
+    say i.
+end.
+"#
+    )
+    .is_ok());
+}
+
+#[test]
+fn test_leave_repeat_loop() {
+    assert!(execute(
+        r#"
+let count be zero.
+repeat ten times:
+    count becomes count added to one.
+    when count is equal to three:
+        leave.
+    end.
+end.
+say count.
+"#
+    )
+    .is_ok());
+}
+
+#[test]
+fn test_skip_repeat_loop() {
+    assert!(execute(
+        r#"
+let count be zero.
+repeat five times:
+    count becomes count added to one.
+    when count is equal to three:
+        skip.
+    end.
+    say count.
+end.
+"#
+    )
+    .is_ok());
+}
+
+#[test]
+fn test_ask_no_prompt() {
+    assert!(execute(
+        r#"
+ask and save to x.
+say x.
+"#
+    )
+    .is_ok());
+}
+
+#[test]
+fn test_ask_no_save() {
+    assert!(execute(
+        r#"
+ask "Enter something".
+"#
+    )
+    .is_ok());
+}
+
+#[test]
+fn test_ask_no_prompt_no_save() {
+    assert!(execute(
+        r#"
+ask.
+"#
+    )
+    .is_ok());
+}
+
+#[test]
+fn test_minus_operator() {
+    assert!(execute(
+        r#"
+let x be ten minus three.
+say x.
+"#
+    )
+    .is_ok());
+}

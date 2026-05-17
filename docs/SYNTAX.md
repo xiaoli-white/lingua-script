@@ -75,10 +75,10 @@ LinguaScript is a narrative-style programming language designed to read like nat
 a, added, an, and, ask, attempt, be, becomes, beware, by, can, capitalize,
 case, chapter, containing, convert, create, define, destroy, divided, each,
 empty, end, equal, execute, exit, extends, fails, false, for, fresh, from,
-greater, has, here, if, implements, in, incase, input, instantiate, interface,
-is, isnt, it, less, let, list, make, map, minus, multiplied, note, not, null,
+greater, has, here, if, implements, in, incase, instantiate, interface,
+is, isnt, it, leave, less, let, list, make, map, minus, multiplied, note, not, null,
 of, on, or, otherwise, plus, product, public, raise, read, regardless, refer,
-remainder, repeat, return, root, run, save, say, square, start, stop,
+remainder, repeat, return, root, run, save, say, skip, square, start, stop,
 subtracted, sum, super, than, that, the, times, to, true, type, using, when,
 which, while, with, write
 ```
@@ -125,11 +125,22 @@ ask prompt and save to variable.
 ```
 Example: `ask "Enter name:" and save to user_name.`
 
-**Read from stdin (expression form):**
+**Prompt user without saving (pushes to stack):**
 ```
-input
+ask prompt.
 ```
-Example: `let line be input.`
+Example: `ask "Continue? (y/n)".`
+
+**Read from stdin without prompt:**
+```
+ask and save to variable.
+```
+Example: `ask and save to line.`
+
+**Read from stdin without saving:**
+```
+ask.
+```
 
 ---
 
@@ -210,6 +221,33 @@ Example:
 ```
 while count is less than ten:
     count becomes count added to one.
+end.
+```
+
+**Leave loop (break):**
+```
+leave.
+```
+Example:
+```
+while true:
+    when done is equal to true:
+        leave.
+    end.
+end.
+```
+
+**Skip to next iteration (continue):**
+```
+skip.
+```
+Example:
+```
+for each item in items:
+    when item is equal to "skip_me":
+        skip.
+    end.
+    say item.
 end.
 ```
 
@@ -576,8 +614,9 @@ note that any text here is ignored.
 | Operation | Natural Language Form | Symbolic Form |
 |-----------|----------------------|---------------|
 | Addition | `a added to b` | `a + b` |
-| Subtraction | `a subtracted from b` (b - a) | `a - b` |
-| Subtraction | `a subtracted by b` (a - b) | — |
+| Subtraction | `a minus b` (推荐) | `a - b` |
+| Subtraction | `a subtracted by b` | `a - b` |
+| Subtraction | `a subtracted from b` (b - a) | — |
 | Multiplication | `a multiplied by b` | `a * b` |
 | Division | `a divided by b` | `a / b` |
 | Modulo | `remainder of a divided by b` | — |

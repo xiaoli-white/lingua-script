@@ -35,7 +35,6 @@ pub enum Expr {
         method: String,
         args: Vec<Expr>,
     },
-    Input,
     ModulePath(Vec<String>),
 }
 
@@ -67,8 +66,8 @@ pub enum Stmt {
     },
     Say(Expr),
     Ask {
-        prompt: Expr,
-        var: String,
+        prompt: Option<Expr>,
+        var: Option<String>,
     },
     ReadFile {
         filename: Expr,
@@ -98,6 +97,8 @@ pub enum Stmt {
     },
     Return(Option<Expr>),
     Stop,
+    Leave,
+    Skip,
     Exit(Option<Expr>),
     Raise(Expr),
     Try {

@@ -12,7 +12,7 @@ pub struct Compiler {
     class_entries: Vec<ClassEntry>,
     class_fields: Vec<(String, Vec<(String, Value)>)>,
     interface_table: Vec<(String, Vec<InterfaceMethod>)>,
-    loops: Vec<Vec<usize>>,
+    loops: Vec<(Vec<usize>, Vec<usize>)>,
     source_dir: Option<String>,
     alias_table: HashMap<String, Vec<String>>,
     module_registry: HashMap<Vec<String>, u32>,
@@ -261,7 +261,6 @@ impl Compiler {
                 self.emit(Instruction::LoadMethod(sm_idx));
                 self.emit(Instruction::Call((args.len() + 1) as u32));
             }
-            Expr::Input => { self.emit(Instruction::Input); }
             Expr::Index { object, index } => {
                 self.compile_expr(object);
                 self.compile_expr(index);
@@ -291,9 +290,17 @@ impl Compiler {
             }
             Stmt::Say(expr) => { self.compile_expr(expr); self.emit(Instruction::Say); }
             Stmt::Ask { prompt, var } => {
-                self.compile_expr(prompt);
-                let idx = self.s(var);
-                self.emit(Instruction::Ask(idx));
+                if let Some(p) = prompt {
+                    self.compile_expr(p);
+                } else {
+                    let empty = self.s("");
+                    self.emit(Instruction::Const(empty));
+                }
+                let var_idx = match var {
+                    Some(v) => self.s(v),
+                    None => u32::MAX,
+                };
+                self.emit(Instruction::Ask(var_idx));
             }
             Stmt::ReadFile { filename, var } => {
                 self.compile_expr(filename);
@@ -320,7 +327,6 @@ impl Compiler {
             }
             Stmt::Repeat { times, body } => {
                 let loop_id = self.loops.len();
-                self.loops.push(Vec::new());
                 self.compile_expr(times);
                 let limit_var = format!("__repeat_limit_{}", loop_id);
                 let counter_var = format!("__repeat_counter_{}", loop_id);
@@ -338,7 +344,9 @@ impl Compiler {
                 self.emit(Instruction::Lt);
                 let exit_jump = self.current_pos();
                 self.emit(Instruction::JumpIfFalse(0));
+                self.loops.push((Vec::new(), Vec::new()));
                 for s in body { self.compile_stmt(s); }
+                let continue_pos = self.current_pos();
                 let cv3 = self.s(&counter_var);
                 let o2 = self.n(1.0);
                 self.emit(Instruction::LoadVar(cv3));
@@ -350,7 +358,14 @@ impl Compiler {
                 self.emit(Instruction::Jump(-((after_jump - loop_start) as i32)));
                 let exit = self.current_pos();
                 self.emit_at(exit_jump, Instruction::JumpIfFalse((exit - exit_jump) as i32));
-                self.loops.pop();
+                let (break_patches, continue_patches) = self.loops.pop().unwrap();
+                for patch in break_patches {
+                    self.emit_at(patch, Instruction::Jump((exit - patch) as i32));
+                }
+                for patch in continue_patches {
+                    let offset = (continue_pos as i32) - (patch as i32);
+                    self.emit_at(patch, Instruction::Jump(offset));
+                }
             }
             Stmt::ForEach { var, collection, body } => {
                 let loop_id = self.loops.len();
@@ -384,8 +399,10 @@ impl Compiler {
                 let v = self.s(var);
                 self.emit(Instruction::StoreVar(v));
 
+                self.loops.push((Vec::new(), Vec::new()));
                 for s in body { self.compile_stmt(s); }
 
+                let continue_pos = self.current_pos();
                 let fi4 = self.s(&format!("__foreach_idx_{}", loop_id));
                 let o = self.n(1.0);
                 self.emit(Instruction::LoadVar(fi4));
@@ -396,21 +413,51 @@ impl Compiler {
                 self.emit(Instruction::Jump(-((self.current_pos() - loop_start) as i32)));
                 let exit = self.current_pos();
                 self.emit_at(exit_jump, Instruction::JumpIfFalse((exit - exit_jump) as i32));
+                let (break_patches, continue_patches) = self.loops.pop().unwrap();
+                for patch in break_patches {
+                    self.emit_at(patch, Instruction::Jump((exit - patch) as i32));
+                }
+                for patch in continue_patches {
+                    let offset = (continue_pos as i32) - (patch as i32);
+                    self.emit_at(patch, Instruction::Jump(offset));
+                }
             }
             Stmt::While { condition, body } => {
                 let loop_start = self.current_pos();
                 self.compile_expr(condition);
                 let exit_jump = self.current_pos();
                 self.emit(Instruction::JumpIfFalse(0));
+                let continue_pos = self.current_pos();
+                self.loops.push((Vec::new(), Vec::new()));
                 for s in body { self.compile_stmt(s); }
                 self.emit(Instruction::Jump(-((self.current_pos() - loop_start) as i32)));
                 let exit = self.current_pos();
                 self.emit_at(exit_jump, Instruction::JumpIfFalse((exit - exit_jump) as i32));
+                let (break_patches, continue_patches) = self.loops.pop().unwrap();
+                for patch in break_patches {
+                    self.emit_at(patch, Instruction::Jump((exit - patch) as i32));
+                }
+                for patch in continue_patches {
+                    let offset = (continue_pos as i32) - (patch as i32);
+                    self.emit_at(patch, Instruction::Jump(offset));
+                }
             }
             Stmt::Block(stmts) => { for s in stmts { self.compile_stmt(s); } }
             Stmt::Return(Some(expr)) => { self.compile_expr(expr); self.emit(Instruction::Return); }
             Stmt::Return(None) => { let idx = self.null_idx(); self.emit(Instruction::Const(idx)); self.emit(Instruction::Return); }
             Stmt::Stop => { self.emit(Instruction::Stop); }
+            Stmt::Leave => {
+                if self.loops.is_empty() { return; }
+                let patch = self.current_pos();
+                self.emit(Instruction::Jump(0));
+                self.loops.last_mut().unwrap().0.push(patch);
+            }
+            Stmt::Skip => {
+                if self.loops.is_empty() { return; }
+                let patch = self.current_pos();
+                self.emit(Instruction::Jump(0));
+                self.loops.last_mut().unwrap().1.push(patch);
+            }
             Stmt::Exit(Some(expr)) => { self.compile_expr(expr); self.emit(Instruction::Exit); }
             Stmt::Exit(None) => { let idx = self.n(0.0); self.emit(Instruction::Const(idx)); self.emit(Instruction::Exit); }
             Stmt::Raise(expr) => { self.compile_expr(expr); self.emit(Instruction::Raise); }

@@ -46,15 +46,14 @@ pub const OP_END_TRY: u8 = 44;
 pub const OP_TYPE_OF: u8 = 45;
 pub const OP_CONVERT: u8 = 46;
 pub const OP_CAPITALIZE: u8 = 47;
-pub const OP_INPUT: u8 = 48;
-pub const OP_DUP: u8 = 49;
-pub const OP_POP: u8 = 50;
-pub const OP_STOP: u8 = 51;
-pub const OP_EXIT: u8 = 52;
-pub const OP_HALT: u8 = 53;
-pub const OP_RETURN_FRAME_AS_MAP: u8 = 54;
-pub const OP_FILTER_MAP: u8 = 55;
-pub const OP_MAKE_STD_MODULE: u8 = 56;
+pub const OP_DUP: u8 = 48;
+pub const OP_POP: u8 = 49;
+pub const OP_STOP: u8 = 50;
+pub const OP_EXIT: u8 = 51;
+pub const OP_HALT: u8 = 52;
+pub const OP_RETURN_FRAME_AS_MAP: u8 = 53;
+pub const OP_FILTER_MAP: u8 = 54;
+pub const OP_MAKE_STD_MODULE: u8 = 55;
 
 #[derive(Debug, Clone)]
 pub enum Instruction {
@@ -90,7 +89,6 @@ pub enum Instruction {
     TypeOf,
     Convert(u32),
     Capitalize,
-    Input,
     Dup, Pop,
     Stop, Exit, Halt,
     ReturnFrameAsMap,
@@ -149,7 +147,6 @@ impl Instruction {
             Instruction::TypeOf => OP_TYPE_OF,
             Instruction::Convert(_) => OP_CONVERT,
             Instruction::Capitalize => OP_CAPITALIZE,
-            Instruction::Input => OP_INPUT,
             Instruction::Dup => OP_DUP,
             Instruction::Pop => OP_POP,
             Instruction::Stop => OP_STOP,
@@ -227,7 +224,6 @@ impl Instruction {
             Instruction::TypeOf => buf.push(OP_TYPE_OF),
             Instruction::Convert(v) => { buf.push(OP_CONVERT); push_u32(buf, *v); }
             Instruction::Capitalize => buf.push(OP_CAPITALIZE),
-            Instruction::Input => buf.push(OP_INPUT),
             Instruction::Dup => buf.push(OP_DUP),
             Instruction::Pop => buf.push(OP_POP),
             Instruction::Stop => buf.push(OP_STOP),
@@ -324,7 +320,6 @@ impl Instruction {
             OP_TYPE_OF => Instruction::TypeOf,
             OP_CONVERT => Instruction::Convert(read_u32(data, offset)),
             OP_CAPITALIZE => Instruction::Capitalize,
-            OP_INPUT => Instruction::Input,
             OP_DUP => Instruction::Dup,
             OP_POP => Instruction::Pop,
             OP_STOP => Instruction::Stop,

@@ -73,7 +73,7 @@ score becomes one hundred.
 
 ```linguascript
 let sum be ten added to five.
-let diff be ten subtracted from five.
+let diff be ten minus five.
 let prod be ten multiplied by five.
 let quot be ten divided by five.
 let rem be remainder of ten divided by three.
@@ -223,7 +223,27 @@ increment using c with 5.
 ### Fresh Instances
 
 ```linguascript
-let c be fresh Counter with 100.
+let items be a list containing "a", "b", "c".
+for each item in items:
+    say item.
+end.
+
+// leave exits the innermost loop
+let i be zero.
+while i is less than ten:
+    when i is equal to five:
+        leave.
+    end.
+    i becomes i added to one.
+end.
+
+// skip jumps to the next iteration
+for each item in items:
+    when item is equal to "b":
+        skip.
+    end.
+    say item.
+end.
 ```
 
 ### Operator Overloading
@@ -366,6 +386,16 @@ say "Hello World".
 ```linguascript
 ask "Enter your name: " and save to name.
 say "Hello " + name.
+
+// Prompt without saving:
+ask "Press Enter to continue...".
+
+// No prompt, save to variable:
+ask and save to line.
+say line.
+
+// No prompt, no save (pushes to stack):
+ask.
 ```
 
 #### File Operations
@@ -478,7 +508,7 @@ Instructions use a compact variable-length encoding (1 byte opcode + operands). 
 
 ### Opcodes
 
-54 opcodes covering: constants, variables, arithmetic, comparison, control flow, functions, classes, collections, I/O, exception handling, type conversion, and stack manipulation.
+56 opcodes covering: constants, variables, arithmetic, comparison, control flow, functions, classes, collections, I/O, exception handling, type conversion, loop control, and stack manipulation.
 
 ## Architecture
 
@@ -513,7 +543,7 @@ Instances with an `on destroy` method have their destructor queued when the refe
 cargo test
 ```
 
-74 integration tests cover number parsing, variables, arithmetic, comparisons, logic, control flow, lists, maps, types, functions, classes, inheritance, interfaces, exceptions, methods, module imports, standard library, operator overloading, and GC shared references.
+84 integration tests cover number parsing, variables, arithmetic, comparisons, logic, control flow, lists, maps, types, functions, classes, inheritance, interfaces, exceptions, methods, module imports, standard library, operator overloading, loop control (leave/skip), GC shared references, and optional input handling.
 
 ```bash
 cargo run -- examples/comprehensive_test.ls

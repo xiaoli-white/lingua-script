@@ -1023,13 +1023,18 @@ impl VM {
                 println!("{}", val.to_string());
             }
             Instruction::Ask(idx) => {
-                let var = self.str_val(idx);
                 let prompt = self.pop();
                 print!("{}", prompt.to_string());
                 io::stdout().flush().unwrap();
                 let mut input = String::new();
                 io::stdin().read_line(&mut input).unwrap();
-                self.set_var(&var, Value::String(input.trim().to_string()));
+                let result = Value::String(input.trim().to_string());
+                if idx == u32::MAX {
+                    self.push(result);
+                } else {
+                    let var = self.str_val(idx);
+                    self.set_var(&var, result);
+                }
             }
             Instruction::ReadFile(idx) => {
                 let var = self.str_val(idx);
@@ -1090,11 +1095,6 @@ impl VM {
                     }
                     _ => self.push(Value::Null),
                 }
-            }
-            Instruction::Input => {
-                let mut input = String::new();
-                io::stdin().read_line(&mut input).unwrap();
-                self.push(Value::String(input.trim().to_string()));
             }
             Instruction::Convert(idx) => {
                 let target_type = self.str_val(idx);
