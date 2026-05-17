@@ -79,7 +79,7 @@ fn run_file(path: &str, source: &str, cli: &Cli) {
     if cli.show_ast || show_all {
         println!("--- ast ({} stmts) ---", program.stmts.len());
         for (i, s) in program.stmts.iter().enumerate() {
-            println!("{:>4}: {:?}", i, s);
+            println!("{:>4}: {:#?}", i, s);
         }
         println!();
     }
