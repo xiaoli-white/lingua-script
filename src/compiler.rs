@@ -766,7 +766,8 @@ impl Compiler {
                     let mod_path = self.find_module_file(&module_name);
 
                     let is_flat = alias.is_none() && path.len() == 1
-                        && !self.alias_table.contains_key(&path[0]);
+                        && !self.alias_table.contains_key(&path[0])
+                        && !Self::is_std_module(&path[0]);
 
                     if is_flat {
                         self.compile_flat_import(&mod_path, &resolved);
@@ -812,8 +813,8 @@ impl Compiler {
             let mod_ref_idx = self.s("__std_mod");
             for &entry in &selected {
                 let key_idx = self.s(entry);
-                self.emit(Instruction::Const(key_idx));
                 self.emit(Instruction::LoadVar(mod_ref_idx));
+                self.emit(Instruction::Const(key_idx));
                 self.emit(Instruction::IndexGet);
                 self.emit(Instruction::StoreVar(key_idx));
             }

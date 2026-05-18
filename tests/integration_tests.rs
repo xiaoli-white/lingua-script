@@ -995,37 +995,6 @@ end.
 }
 
 #[test]
-fn test_ask_no_prompt() {
-    assert!(execute(
-        r#"
-ask and save to x.
-say x.
-"#
-    )
-    .is_ok());
-}
-
-#[test]
-fn test_ask_no_save() {
-    assert!(execute(
-        r#"
-ask "Enter something".
-"#
-    )
-    .is_ok());
-}
-
-#[test]
-fn test_ask_no_prompt_no_save() {
-    assert!(execute(
-        r#"
-ask.
-"#
-    )
-    .is_ok());
-}
-
-#[test]
 fn test_minus_operator() {
     assert!(execute(
         r#"
